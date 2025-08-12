@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vue CDN — 2D Canvas Shooter (no assets)</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#0f1724;--accent:#4fd1c5;--danger:#ff6b6b}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#071023 0%, #071428 60%);color:#dbeafe}
+    #app{display:flex;gap:16px;align-items:flex-start;height:100vh;padding:18px}
+    .game-wrap{position:relative;flex:1;display:flex;justify-content:center;align-items:center}
+    canvas{background:radial-gradient(ellipse at center,#071428 0%, #020612 60%);border-radius:12px;box-shadow:0 6px 30px rgba(2,6,15,0.7);max-width:100%;height:auto}
+    .hud{position:absolute;left:18px;top:18px;background:rgba(7,10,20,0.6);backdrop-filter:blur(6px);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
+    .controls{position:absolute;right:18px;top:18px;background:rgba(7,10,20,0.6);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
+    .stat{font-size:13px;margin:4px 0}
+    .bar{height:10px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden}
+    .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa)}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:6px 10px;border-radius:8px;cursor:pointer}
+    footer{position:absolute;left:18px;bottom:18px;color:#93c5fd;font-size:12px}
+    .small{font-size:12px;color:#9fb3d6}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="game-wrap">
+      <canvas id="gameCanvas" width="1024" height="640"></canvas>
+
+      <div class="hud">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-weight:700;font-size:16px">Score: {{score}}</div>
+          <div class="small">Wave: {{wave}} | Enemies: {{enemies.length}}</div>
+        </div>
+
+        <div class="stat" style="margin-top:8px">Health</div>
+        <div class="bar" style="width:260px"><i :style="{width: Math.max(0, (player.hp/player.maxHp)*100) + '%', background: 'linear-gradient(90deg,' + (player.hp/player.maxHp < 0.35 ? '#ff6b6b' : '--accent') + ', #60a5fa)'}"></i></div>
+
+        <div class="stat">Weapon: <strong>{{weapon.name}}</strong> — <span class="small">{{weapon.mode}}</span></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button @click="togglePause">{{paused ? 'Resume' : 'Pause'}}</button>
+          <button @click="restartGame">Restart</button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="small">Controls</div>
+        <div class="small">WASD / Arrow keys — move</div>
+        <div class="small">Mouse — aim</div>
+        <div class="small">Left Click hold — fire</div>
+        <div class="small">Mouse Wheel — switch weapon</div>
+        <div class="small">P — pause</div>
+      </div>
+
+      <footer>Made with <strong>Vue CDN</strong> + Canvas • No external assets</footer>
+    </div>
+
+    <div style="width:320px">
+      <div style="background:var(--panel);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)">
+        <h3 style="margin:0 0 8px 0">Game Settings</h3>
+        <label class="small">Difficulty</label>
+        <select v-model="difficulty" style="width:100%;margin:6px 0;padding:8px;border-radius:6px;background:transparent;color:inherit">
+          <option value="easy">Easy</option>
+          <option value="normal">Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+
+        <label class="small">Spawn density</label>
+        <input type="range" min="0.5" max="2.0" step="0.1" v-model.number="spawnMultiplier" />
+        <div class="small" style="margin-top:8px">Particles: <input type="checkbox" v-model="showParticles" /></div>
+
+        <div style="margin-top:12px">
+          <div class="small">Tips:</div>
+          <ul class="small">
+            <li>Use the wheel to try different weapons.</li>
+            <li>Hold left mouse for automatic fire.</li>
+            <li>Restart if you get stuck.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+      <div style="background:var(--panel);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)">
+        <h4 style="margin:0 0 8px 0">Debug / Stats</h4>
+        <div class="small">FPS: {{fps}}</div>
+        <div class="small">Bullets: {{bulletsAlive}}</div>
+        <div class="small">Enemies Spawned: {{enemiesSpawned}}</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script>
+    const { createApp, onMounted, reactive } = Vue;
+
+    createApp({
+      data() {
+        return {
+          fps: 0,
+          score: 0,
+          wave: 1,
+          paused: false,
+          difficulty: 'normal',
+          spawnMultiplier: 1.0,
+          showParticles: true,
+
+          // Debug counts
+          bulletsAlive: 0,
+          enemiesSpawned: 0,
+
+          // Game internals
+          player: {
+            x: 512, y: 320, r: 14, speed: 260, vx:0, vy:0,
+            hp: 100, maxHp: 100
+          },
+          enemies: [],
+          bullets: [],
+          particles: [],
+          mouse: {x:512,y:320,down:false},
+          keys: {},
+
+          weapons: [
+            {name:'Pistol', mode:'semi', fireRate:200, bulletSpeed:520, dmg:18, spread:0, auto:false},
+            {name:'SMG', mode:'auto', fireRate:70, bulletSpeed:700, dmg:8, spread:6, auto:true},
+            {name:'Shotgun', mode:'pump', fireRate:600, bulletSpeed:420, dmg:9, spread:18, pellets:7, auto:false},
+            {name:'Plasma', mode:'burst', fireRate:120, bulletSpeed:500, dmg:12, spread:8, burst:3, auto:true}
+          ],
+          weaponIndex: 0,
+          lastShotAt: 0,
+
+          // canvas
+          ctx: null,
+          cw: 1024, ch: 640,
+          lastTick: performance.now(),
+          tickDelta: 0,
+        }
+      },
+      computed: {
+        weapon(){return this.weapons[this.weaponIndex]}
+      },
+      methods: {
+        togglePause(){ this.paused = !this.paused },
+        restartGame(){
+          // reset state
+          this.score = 0; this.wave = 1; this.player.hp = this.player.maxHp; this.enemies = []; this.bullets = []; this.particles = []; this.enemiesSpawned = 0;
+          this.player.x = this.cw/2; this.player.y = this.ch/2; this.paused = false;
+        },
+
+        // spawn enemy with simple AI
+        spawnEnemy(type='chaser'){
+          const edge = Math.floor(Math.random()*4);
+          let x = 0,y=0;
+          if(edge===0){ x = -30; y = Math.random()*this.ch }
+          if(edge===1){ x = this.cw+30; y = Math.random()*this.ch }
+          if(edge===2){ x = Math.random()*this.cw; y = -30 }
+          if(edge===3){ x = Math.random()*this.cw; y = this.ch+30 }
+
+          const baseHp = {chaser: 20, brute: 40, runner: 12, shooter: 18}[type] || 18;
+          const speed = {chaser: 65, brute: 35, runner: 150, shooter: 80}[type] || 80;
+
+          const enemy = {
+            id: Math.random().toString(36).slice(2),
+            x, y, r: 12 + Math.random()*10, vx:0, vy:0,
+            type, hp: baseHp * (1 + this.wave*0.12 * (this.difficulty==='hard'?1.2:this.difficulty==='easy'?0.85:1)),
+            maxHp: baseHp, speed: speed * (1 + this.wave*0.03), shootCooldown: 0
+          };
+          this.enemies.push(enemy);
+          this.enemiesSpawned++;
+        },
+
+        // fire a bullet (or shotgun pellets)
+        fireBullet(x,y,angle, speed, dmg, owner='player'){
+          // reuse pooled bullets
+          let b = this.bullets.find(b=>!b.alive);
+          if(!b){ b = {alive:false}; this.bullets.push(b) }
+          b.alive = true; b.x = x; b.y = y; b.vx = Math.cos(angle)*speed; b.vy = Math.sin(angle)*speed; b.life = 2000; b.birth = performance.now(); b.dmg = dmg; b.owner = owner; b.r = owner==='player'?4:6;
+          return b;
+        },
+
+        spawnParticles(x,y,color,count=12){ if(!this.showParticles) return; for(let i=0;i<count;i++){ this.particles.push({x,y,vx:(Math.random()-0.5)*300, vy:(Math.random()-0.5)*300, life:400+Math.random()*600, birth:performance.now(), r:1+Math.random()*2, color}) } },
+
+        update(dt){
+          if(this.paused) return;
+          const now = performance.now();
+
+          // player movement input
+          const acc = 1200;
+          let ax=0, ay=0;
+          if(this.keys['w']||this.keys['ArrowUp']) ay -= 1;
+          if(this.keys['s']||this.keys['ArrowDown']) ay += 1;
+          if(this.keys['a']||this.keys['ArrowLeft']) ax -= 1;
+          if(this.keys['d']||this.keys['ArrowRight']) ax += 1;
+          const len = Math.hypot(ax,ay) || 1;
+          this.player.vx += (ax/len) * acc * dt;
+          this.player.vy += (ay/len) * acc * dt;
+
+          // friction / clamp
+          this.player.vx *= 0.92; this.player.vy *= 0.92;
+          const maxSpeed = this.player.speed;
+          const vmag = Math.hypot(this.player.vx, this.player.vy);
+          if(vmag > maxSpeed){ this.player.vx = (this.player.vx/vmag)*maxSpeed; this.player.vy = (this.player.vy/vmag)*maxSpeed }
+
+          this.player.x += this.player.vx * dt;
+          this.player.y += this.player.vy * dt;
+
+          // keep inside
+          this.player.x = Math.max(this.player.r, Math.min(this.cw - this.player.r, this.player.x));
+          this.player.y = Math.max(this.player.r, Math.min(this.ch - this.player.r, this.player.y));
+
+          // shooting logic
+          const weapon = this.weapon;
+          if(this.mouse.down){
+            // manage different weapon modes
+            if(weapon.mode === 'semi'){
+              if(now - this.lastShotAt > weapon.fireRate){
+                this.shootOne(); this.lastShotAt = now;
+              }
+            } else if(weapon.mode === 'auto'){
+              if(now - this.lastShotAt > weapon.fireRate){
+                this.shootOne(); this.lastShotAt = now;
+              }
+            } else if(weapon.mode === 'pump'){
+              // shotgun — single per click, so auto is false; allow one per click only
+              // handled by mousedown event
+            } else if(weapon.mode === 'burst'){
+              // burst: shoot `burst` bullets with small delay; simple impl: fire multiple instantly
+              if(now - this.lastShotAt > weapon.fireRate){
+                for(let i=0;i<(weapon.burst||3);i++){
+                  const spread = (Math.random()-0.5) * weapon.spread * Math.PI/180;
+                  this.shootAngle(this.getAimAngle() + spread);
+                }
+                this.lastShotAt = now;
+              }
+            }
+          }
+
+          // update bullets
+          this.bulletsAlive = 0;
+          for(const b of this.bullets){
+            if(!b.alive) continue;
+            b.x += b.vx*dt; b.y += b.vy*dt;
+            b.life -= dt*1000;
+            if(b.life <= 0 || b.x < -40 || b.y < -40 || b.x > this.cw+40 || b.y > this.ch+40){ b.alive = false; continue }
+            this.bulletsAlive++;
+          }
+
+          // enemies
+          for(let i = this.enemies.length-1; i>=0; i--){
+            const e = this.enemies[i];
+            const dx = this.player.x - e.x; const dy = this.player.y - e.y; const dist = Math.hypot(dx,dy)||1;
+            const nx = dx/dist, ny = dy/dist;
+
+            if(e.type === 'runner'){
+              // runner tries to flank — simple: move tangentially sometimes
+              e.vx += (Math.random()-0.5)*30*dt;
+              e.vy += (Math.random()-0.5)*30*dt;
+            } else if(e.type === 'shooter'){
+              // shooter stops sometimes and fires
+              e.shootCooldown -= dt*1000;
+              if(e.shootCooldown <= 0){
+                const ang = Math.atan2(dy,dx);
+                // enemy bullet
+                this.fireBullet(e.x, e.y, ang, 320, 8, 'enemy');
+                e.shootCooldown = 1200 + Math.random()*600;
+              }
+            }
+
+            // basic chaser movement
+            e.vx = nx * e.speed; e.vy = ny * e.speed;
+            e.x += e.vx * dt; e.y += e.vy * dt;
+
+            // collision with player
+            if(Math.hypot(e.x - this.player.x, e.y - this.player.y) < e.r + this.player.r){
+              // damage to player
+              this.player.hp -= 6;
+              this.spawnParticles(e.x,e.y,'#ff6b6b',8);
+              e.hp -= 9999; // enemy destroyed on contact
+            }
+
+            // bullet hits
+            for(const b of this.bullets){
+              if(!b.alive || b.owner === 'enemy') continue;
+              if(Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r){
+                e.hp -= b.dmg; b.alive = false; this.spawnParticles(b.x,b.y,'#ffd166',6);
+                if(e.hp <= 0){ this.enemies.splice(i,1); this.score += Math.floor(10 + e.maxHp*1.5); this.spawnParticles(e.x,e.y,'#60a5fa',18); break }
+              }
+            }
+
+            if(e.hp <= 0){ /* removed above */ }
+          }
+
+          // enemy bullets hitting player
+          for(const b of this.bullets){ if(!b.alive || b.owner!=='enemy') continue; if(Math.hypot(b.x - this.player.x, b.y - this.player.y) < b.r + this.player.r){ b.alive = false; this.player.hp -= 12; this.spawnParticles(b.x,b.y,'#ff6b6b',10) } }
+
+          // particles
+          for(const p of this.particles){ const life = now - p.birth; p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.98; p.vy *= 0.98; p.life -= dt*1000 }
+          this.particles = this.particles.filter(p => p.life > 0 && p.x > -50 && p.y > -50 && p.x < this.cw+50 && p.y < this.ch+50);
+
+          // spawn new enemies if none or wave conditions
+          if(this.enemies.length < 1 + Math.floor(this.wave * 2 * this.spawnMultiplier)){
+            const types = ['chaser','runner','shooter','brute'];
+            const t = types[Math.floor(Math.random()*types.length)];
+            this.spawnEnemy(t);
+          }
+
+          // increase difficulty slowly
+          if(this.score > this.wave * 400){ this.wave++; }
+
+          // death check
+          if(this.player.hp <= 0){ this.paused = true; alert('You died! Score: ' + this.score); }
+        },
+
+        shootOne(){
+          const angle = this.getAimAngle();
+          const w = this.weapon;
+          if(w.name === 'Shotgun'){
+            for(let i=0;i<(w.pellets||7);i++){
+              const spread = (Math.random()-0.5) * w.spread * Math.PI/180;
+              this.shootAngle(angle + spread);
+            }
+          } else {
+            this.shootAngle(angle + (Math.random()-0.5) * (w.spread||0) * Math.PI/180);
+          }
+          // muzzle particle & recoil
+          this.spawnParticles(this.player.x + Math.cos(angle)*20, this.player.y + Math.sin(angle)*20, '#ffd166', 6);
+          // small recoil
+          this.player.vx -= Math.cos(angle) * 40;
+          this.player.vy -= Math.sin(angle) * 40;
+        },
+
+        shootAngle(angle){
+          const w = this.weapon;
+          this.fireBullet(this.player.x + Math.cos(angle)*20, this.player.y + Math.sin(angle)*20, angle, w.bulletSpeed, w.dmg, 'player');
+        },
+
+        getAimAngle(){ return Math.atan2(this.mouse.y - this.player.y, this.mouse.x - this.player.x) },
+
+        gameLoop(now) {
+          const dt = Math.min(0.05, (now - this.lastTick) / 1000);
+          this.lastTick = now;
+
+          if (!this.paused) {
+            this.update(dt);
+          }
+
+          this.draw();
+          requestAnimationFrame(this.gameLoop.bind(this)); // always run
+        }
+        ,
+
+        draw(){
+          const ctx = this.ctx; ctx.clearRect(0,0,this.cw,this.ch);
+
+          // background grid (subtle)
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
+          for(let x=0;x<this.cw;x+=64){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,this.ch); ctx.stroke(); }
+          for(let y=0;y<this.ch;y+=64){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(this.cw,y); ctx.stroke(); }
+          ctx.restore();
+
+          // draw particles
+          for(const p of this.particles){ ctx.globalAlpha = Math.max(0, Math.min(1, p.life/800)); ctx.fillStyle = p.color || '#fff'; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }
+          ctx.globalAlpha = 1;
+
+          // draw bullets
+          ctx.lineWidth = 1;
+          for(const b of this.bullets){ if(!b.alive) continue; ctx.beginPath(); ctx.fillStyle = b.owner==='player' ? '#ffd166' : '#ff6b6b'; ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+
+          // draw enemies
+          for(const e of this.enemies){
+            // body
+            ctx.beginPath();
+            ctx.fillStyle = '#fb7185';
+            ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+            // HP bar
+            ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r*2, 4);
+            ctx.fillStyle = '#60a5fa'; ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.hp/e.maxHp)*e.r*2, 4);
+          }
+
+          // player
+          const ang = this.getAimAngle();
+          // shadow
+          ctx.beginPath(); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.ellipse(this.player.x+6,this.player.y+10, this.player.r+6, this.player.r+3, 0, 0, Math.PI*2); ctx.fill();
+
+          ctx.save(); ctx.translate(this.player.x, this.player.y); ctx.rotate(ang);
+          // body
+          ctx.beginPath(); ctx.fillStyle = '#60a5fa'; ctx.arc(0,0,this.player.r,0,Math.PI*2); ctx.fill();
+          // gun
+          ctx.fillStyle = '#0ea5a3'; ctx.fillRect(8, -5, 18, 10);
+          ctx.restore();
+
+          // crosshair
+          ctx.beginPath(); ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.moveTo(this.mouse.x-8,this.mouse.y); ctx.lineTo(this.mouse.x+8,this.mouse.y); ctx.moveTo(this.mouse.x,this.mouse.y-8); ctx.lineTo(this.mouse.x,this.mouse.y+8); ctx.stroke();
+
+          // HUD overlay drawn in canvas (redundant with DOM UI but nice)
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(8, this.ch-36, 220, 28);
+          ctx.fillStyle = '#fff'; ctx.font = '14px Inter, Arial'; ctx.fillText('HP: ' + Math.max(0,Math.round(this.player.hp)) + '  |  Score: ' + this.score, 16, this.ch-16);
+        }
+      },
+      mounted(){
+        const canvas = document.getElementById('gameCanvas');
+        this.ctx = canvas.getContext('2d');
+        this.cw = canvas.width; this.ch = canvas.height;
+        this.lastTick = performance.now();
+
+        // init bullets pool
+        for(let i=0;i<120;i++){ this.bullets.push({alive:false}) }
+
+        // events
+        canvas.addEventListener('mousemove', (e)=>{
+          const rect = canvas.getBoundingClientRect(); this.mouse.x = (e.clientX - rect.left) * (canvas.width/rect.width); this.mouse.y = (e.clientY - rect.top) * (canvas.height/rect.height);
+        });
+        canvas.addEventListener('mousedown', (e)=>{
+          if(e.button === 0){ this.mouse.down = true; // For pump/shotgun, allow single shot on down
+            const w = this.weapon; if(w.mode === 'pump'){ if(performance.now() - this.lastShotAt > 150){ this.shootOne(); this.lastShotAt = performance.now() } }
+          }
+        });
+        window.addEventListener('mouseup', (e)=>{ if(e.button===0) this.mouse.down = false });
+        canvas.addEventListener('wheel', (e)=>{ e.preventDefault(); if(e.deltaY > 0) this.weaponIndex = (this.weaponIndex+1) % this.weapons.length; else this.weaponIndex = (this.weaponIndex -1 + this.weapons.length) % this.weapons.length });
+
+        window.addEventListener('keydown', (e)=>{ this.keys[e.key] = true; if(e.key.toLowerCase()==='p') this.togglePause(); });
+        window.addEventListener('keyup', (e)=>{ this.keys[e.key] = false });
+
+        // keep mouse inside detection for when leaving canvas
+        canvas.addEventListener('mouseleave',(e)=>{ /* optionally stop automatic fire when leaving */ /* this.mouse.down = false */ });
+
+        // start loop
+        requestAnimationFrame(this.gameLoop.bind(this));
+
+        // initial spawns
+        for(let i=0;i<3;i++) this.spawnEnemy();
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
