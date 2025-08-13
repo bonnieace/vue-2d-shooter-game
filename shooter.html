@@ -3,98 +3,340 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vue CDN — 2D Canvas Shooter (Fixed)</title>
+  <title>Vue CDN — 2D Canvas Shooter (Fullscreen)</title>
   <style>
     :root{--bg:#0b1020;--panel:#0f1724;--accent:#4fd1c5;--danger:#ff6b6b}
-    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#071023 0%, #071428 60%);color:#dbeafe}
-    #app{display:flex;gap:16px;align-items:flex-start;height:100vh;padding:18px}
-    .game-wrap{position:relative;flex:1;display:flex;justify-content:center;align-items:center}
-    canvas{background:radial-gradient(ellipse at center,#071428 0%, #020612 60%);border-radius:12px;box-shadow:0 6px 30px rgba(2,6,15,0.7);max-width:100%;height:auto}
-    .hud{position:absolute;left:18px;top:18px;background:rgba(7,10,20,0.6);backdrop-filter:blur(6px);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
-    .controls{position:absolute;right:18px;top:18px;background:rgba(7,10,20,0.6);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
-    .stat{font-size:13px;margin:4px 0}
-    .bar{height:10px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden}
-    .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa)}
-    button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:6px 10px;border-radius:8px;cursor:pointer}
-    footer{position:absolute;left:18px;bottom:18px;color:#93c5fd;font-size:12px}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#071023 0%, #071428 60%);color:#dbeafe;overflow:hidden}
+    .gameover-img {
+      width:120px;
+      height:auto;
+      display:block;
+      margin: 0 auto 12px auto;
+      filter: drop-shadow(0 6px 20px rgba(0,0,0,0.6));
+    }
+    .gameover-stats .small { text-align:center; margin:6px 0; }
+
+    /* Pause Menu Styles */
+    .pause-menu {
+      display:flex;
+      gap:16px;
+      align-items:flex-start;
+      height:100vh;
+      padding:18px;
+    }
+    
+    .game-preview {
+      position:relative;
+      flex:1;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+    }
+    
+    .preview-canvas {
+      background:radial-gradient(ellipse at center,#071428 0%, #020612 60%);
+      border-radius:12px;
+      box-shadow:0 6px 30px rgba(2,6,15,0.7);
+      max-width:100%;
+      height:auto;
+      opacity:0.3;
+    }
+    
+    .play-overlay {
+      position:absolute;
+      inset:0;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      background:rgba(7,10,20,0.8);
+      backdrop-filter:blur(8px);
+      border-radius:12px;
+    }
+    
+    .play-button {
+      background:linear-gradient(135deg, var(--accent), #60a5fa);
+      border:none;
+      color:white;
+      padding:16px 32px;
+      border-radius:12px;
+      font-size:18px;
+      font-weight:700;
+      cursor:pointer;
+      transition:transform 0.2s, box-shadow 0.2s;
+      box-shadow:0 4px 20px rgba(79,209,197,0.3);
+    }
+    
+    .play-button:hover {
+      transform:translateY(-2px);
+      box-shadow:0 6px 25px rgba(79,209,197,0.4);
+    }
+    
+    .settings-panel {
+      width:320px;
+      background:var(--panel);
+      padding:20px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.03);
+      height:fit-content;
+    }
+    
+    /* Fullscreen Game Styles */
+    .fullscreen-game {
+      position:fixed;
+      top:0;
+      left:0;
+      width:100vw;
+      height:100vh;
+      background:#000;
+      z-index:1000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    
+    .game-canvas {
+      width:100vw;
+      height:100vh;
+      object-fit:contain;
+      background:radial-gradient(ellipse at center,#071428 0%, #020612 60%);
+    }
+    
+    /* In-game HUD */
+    .game-hud {
+      position:absolute;
+      left:20px;
+      top:20px;
+      background:rgba(7,10,20,0.8);
+      backdrop-filter:blur(8px);
+      padding:12px 16px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.1);
+      z-index:1001;
+    }
+    
+    .hud-row {
+      display:flex;
+      align-items:center;
+      gap:16px;
+      margin-bottom:8px;
+    }
+    
+    .hud-row:last-child {
+      margin-bottom:0;
+    }
+    
+    .score-display {
+      font-weight:700;
+      font-size:18px;
+    }
+    
+    .health-bar {
+      width:200px;
+      height:8px;
+      background:rgba(255,255,255,0.1);
+      border-radius:4px;
+      overflow:hidden;
+    }
+    
+    .health-fill {
+      height:100%;
+      background:linear-gradient(90deg, var(--accent), #60a5fa);
+      transition:width 0.3s ease;
+    }
+    
+    .weapon-info {
+      font-size:14px;
+      opacity:0.9;
+    }
+    
+    /* Pause overlay in fullscreen */
+    .pause-overlay {
+      position:absolute;
+      inset:0;
+      background:rgba(0,0,0,0.8);
+      backdrop-filter:blur(8px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:1002;
+    }
+    
+    .pause-menu-content {
+      background:var(--panel);
+      padding:32px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.1);
+      text-align:center;
+      min-width:300px;
+    }
+    
+    /* Controls */
+    button{background:transparent;border:1px solid rgba(255,255,255,0.2);color:inherit;padding:8px 16px;border-radius:8px;cursor:pointer;transition:all 0.2s}
+    button:hover{background:rgba(255,255,255,0.1);border-color:var(--accent)}
+    select,input[type="range"]{background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.2);border-radius:6px}
+    select{padding:8px;width:100%}
+    input[type="range"]{width:100%;margin:8px 0}
+    input[type="checkbox"]{margin-left:8px}
     .small{font-size:12px;color:#9fb3d6}
+    h3,h4{margin:0 0 12px 0;color:#fff}
+    ul{margin:8px 0;padding-left:16px}
+    li{margin:4px 0}
+    
+    /* Exit button */
+    .exit-game {
+      position:absolute;
+      top:20px;
+      right:20px;
+      background:rgba(255,107,107,0.2);
+      border:1px solid rgba(255,107,107,0.4);
+      color:#ff6b6b;
+      padding:8px 12px;
+      border-radius:8px;
+      cursor:pointer;
+      z-index:1001;
+      font-size:12px;
+    }
+    
+    .exit-game:hover {
+      background:rgba(255,107,107,0.3);
+    }
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="game-wrap">
-      <canvas id="gameCanvas" width="1024" height="640"></canvas>
-
-      <div class="hud">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="font-weight:700;font-size:16px">Score: {{score}}</div>
-          <div class="small">Wave: {{wave}} | Enemies: {{enemies.length}} | FPS: {{fps}}</div>
-        </div>
-
-        <div class="stat" style="margin-top:8px">Health</div>
-        <div class="bar" style="width:260px">
-          <i :style="{
-            width: Math.max(0, (player.hp/player.maxHp)*100) + '%', 
-            background: 'linear-gradient(90deg,' + (player.hp/player.maxHp < 0.35 ? '#ff6b6b' : 'var(--accent)') + ', #60a5fa)'
-          }"></i>
-        </div>
-
-        <div class="stat">Weapon: <strong>{{weapon.name}}</strong> — <span class="small">{{weapon.mode}}</span></div>
-        <div style="margin-top:8px;display:flex;gap:8px">
-          <button @click="togglePause">{{paused ? 'Resume' : 'Pause'}}</button>
-          <button @click="restartGame">Restart</button>
+    <!-- Pause Menu View -->
+    <div v-if="gameState === 'menu'" class="pause-menu">
+      <div class="game-preview">
+        <canvas ref="previewCanvas" class="preview-canvas" width="800" height="500"></canvas>
+        <div class="play-overlay">
+          <h1 style="margin:0 0 16px 0;font-size:32px;background:linear-gradient(135deg,var(--accent),#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">
+            2D Space Shooter
+          </h1>
+          <button class="play-button" @click="startGame">
+            ▶ START GAME
+          </button>
+          <p class="small" style="margin-top:16px;opacity:0.7">Configure settings on the right, then press play!</p>
         </div>
       </div>
 
-      <div class="controls">
-        <div class="small">Controls</div>
-        <div class="small">WASD / Arrow keys — move</div>
-        <div class="small">Mouse — aim</div>
-        <div class="small">Left Click hold — fire</div>
-        <div class="small">Mouse Wheel — switch weapon</div>
-        <div class="small">P — pause</div>
-      </div>
-
-      <footer>Made with <strong>Vue CDN</strong> + Canvas • No external assets • Fixed Version</footer>
-    </div>
-
-    <div style="width:320px">
-      <div style="background:var(--panel);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)">
-        <h3 style="margin:0 0 8px 0">Game Settings</h3>
+      <div class="settings-panel">
+        <h3>Game Settings</h3>
+        
         <label class="small">Difficulty</label>
-        <select v-model="difficulty" style="width:100%;margin:6px 0;padding:8px;border-radius:6px;background:transparent;color:inherit">
+        <select v-model="difficulty" style="margin:6px 0 16px 0">
           <option value="easy">Easy</option>
           <option value="normal">Normal</option>
           <option value="hard">Hard</option>
         </select>
 
-        <label class="small">Spawn density</label>
+        <label class="small">Enemy Spawn Rate</label>
         <input type="range" min="0.5" max="2.0" step="0.1" v-model.number="spawnMultiplier" />
-        <div class="small" style="margin-top:8px">Particles: <input type="checkbox" v-model="showParticles" /></div>
+        <div class="small" style="margin-bottom:16px">{{spawnMultiplier}}x</div>
+        
+        <div style="margin-bottom:16px">
+          <label class="small">
+            <input type="checkbox" v-model="showParticles" /> Enable Particles
+          </label>
+        </div>
 
-        <div style="margin-top:12px">
-          <div class="small">Tips:</div>
-          <ul class="small">
-            <li>Use the wheel to try different weapons.</li>
-            <li>Hold left mouse for automatic fire.</li>
-            <li>Restart if you get stuck.</li>
-          </ul>
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)">
+          <h4>How to Play</h4>
+          <div class="small">
+            <strong>Movement:</strong> WASD or Arrow Keys<br>
+            <strong>Aim:</strong> Mouse<br>
+            <strong>Shoot:</strong> Hold Left Click<br>
+            <strong>Weapon Switch:</strong> Mouse Wheel<br>
+            <strong>Pause:</strong> P or ESC<br>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)">
+          <h4>Weapons</h4>
+          <div class="small">
+            <strong>Pistol:</strong> Balanced single shots<br>
+            <strong>SMG:</strong> High fire rate, low damage<br>
+            <strong>Shotgun:</strong> Spread shot, close range<br>
+            <strong>Plasma:</strong> 3-round burst fire<br>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen Game View -->
+    <div v-if="gameState === 'playing'" class="fullscreen-game">
+      <canvas 
+        ref="gameCanvas" 
+        class="game-canvas" 
+        :width="canvasWidth" 
+        :height="canvasHeight"
+        @mousemove="onMouseMove"
+        @mousedown="onMouseDown"
+        @mouseup="onMouseUp"
+        @mouseleave="onMouseLeave"
+        @wheel="onWheel"
+        @contextmenu.prevent
+      ></canvas>
+      
+      <!-- Game HUD -->
+      <div class="game-hud">
+        <div class="hud-row">
+          <div class="score-display">{{score}}</div>
+          <div class="small">Wave {{wave}} • {{enemies.length}} enemies • {{fps}} FPS</div>
+        </div>
+        <div class="hud-row">
+          <div class="small" style="width:60px">Health:</div>
+          <div class="health-bar">
+            <div class="health-fill" :style="{
+              width: Math.max(0, (player.hp/player.maxHp)*100) + '%',
+              background: player.hp/player.maxHp < 0.35 ? 'linear-gradient(90deg, #ff6b6b, #ff8787)' : 'linear-gradient(90deg, var(--accent), #60a5fa)'
+            }"></div>
+          </div>
+          <div class="small">{{Math.max(0, Math.round(player.hp))}}/{{player.maxHp}}</div>
+        </div>
+        <div class="hud-row">
+          <div class="weapon-info">
+            <strong>{{weapon.name}}</strong> • {{weapon.mode}}
+          </div>
+        </div>
+      </div>
+      
+      <!-- Exit button -->
+      <button class="exit-game" @click="exitToMenu">← EXIT</button>
+      
+      <!-- Pause overlay -->
+      <div v-if="paused" class="pause-overlay">
+      <!-- inside the pause overlay template (v-if="paused") -->
+      <div class="pause-menu-content">
+        <img class="gameover-img" src="assets/confetti.png" alt="Congrats" />
+        <h2 style="margin:8px 0 12px 0" v-if="gameOver">{{ gameOverMessage }}</h2>
+        <h2 style="margin:8px 0 12px 0" v-else>Game Paused</h2>
+
+        <div class="gameover-stats" style="margin:12px 0 18px 0">
+          <div class="small">Score: <strong>{{ score }}</strong></div>
+          <div class="small">Wave reached: <strong>{{ wave }}</strong></div>
+          <div class="small">Enemies killed: <strong>{{ enemiesKilled }}</strong></div>
+          <div class="small">Bullets fired: <strong>{{ bulletsFired }}</strong></div>
+          <div class="small">Accuracy: <strong>{{ bulletsFired ? Math.round((enemiesKilled / bulletsFired) * 100) : 0 }}%</strong></div>
+          <div class="small">Run time: <strong>{{ formatMs(sessionTime) }}</strong></div>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:center">
+          <template v-if="!gameOver">
+            <button @click="togglePause">Resume</button>
+          </template>
+          <button @click="restartGame">Restart</button>
+          <button @click="exitToMenu">Exit to Menu</button>
         </div>
       </div>
 
-      <div style="height:12px"></div>
-      <div style="background:var(--panel);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)">
-        <h4 style="margin:0 0 8px 0">Debug / Stats</h4>
-        <div class="small">Bullets: {{bulletsAlive}}</div>
-        <div class="small">Enemies Spawned: {{enemiesSpawned}}</div>
-        <div class="small">Active Particles: {{particles.length}}</div>
       </div>
     </div>
   </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script>
-  const { createApp, onMounted, reactive, onUnmounted } = Vue;
+  const { createApp, onMounted, onUnmounted, nextTick } = Vue;
 
   // Constants
   const CONSTANTS = {
@@ -106,21 +348,32 @@
     ACCELERATION: 1200,
     PARTICLE_LIFETIME: 800,
     MAX_BULLETS: 120,
-    BURST_DELAY: 50, // ms between burst shots
+    BURST_DELAY: 50,
   };
-  // sprite front points UP, so rotate by +90deg (PI/2) to align
   const SPRITE_ANGLE_OFFSET = Math.PI / 2;
-
 
   createApp({
     data() {
       return {
+        gameState: 'menu', // 'menu' or 'playing'
+          startTime: 0,
+          sessionTime: 0,       // ms
+          enemiesKilled: 0,
+          bulletsFired: 0,
+        // Canvas dimensions
+        canvasWidth: 1920,
+        canvasHeight: 1080,
+        
+        // Game stats
         fps: 0,
         fpsCounter: 0,
         fpsLastTime: 0,
         score: 0,
         wave: 1,
         paused: false,
+        gameOver: false, // NEW: distinguishes death vs regular pause
+        
+        // Settings
         difficulty: 'normal',
         spawnMultiplier: 1.0,
         showParticles: true,
@@ -129,18 +382,21 @@
         bulletsAlive: 0,
         enemiesSpawned: 0,
 
-        // Game internals
+        // Game objects
         player: {
-          x: 512, y: 320, r: 14, speed: 260, vx: 0, vy: 0,
-          hp: 100, maxHp: 100
+          x: 960, y: 540, r: 14, speed: 300, vx: 0, vy: 0,
+          hp: 100, maxHp: 100, rotation: 0
         },
         enemies: [],
         bullets: [],
         particles: [],
-        freeBullets: [], // Pool of available bullets
-        mouse: { x: 512, y: 320, down: false },
+        freeBullets: [],
+        
+        // Input
+        mouse: { x: 960, y: 540, down: false },
         keys: {},
 
+        // Weapons
         weapons: [
           { name: 'Pistol', mode: 'semi', fireRate: 200, bulletSpeed: 520, dmg: 18, spread: 0, auto: false },
           { name: 'SMG', mode: 'auto', fireRate: 70, bulletSpeed: 700, dmg: 8, spread: 6, auto: true },
@@ -149,20 +405,16 @@
         ],
         weaponIndex: 0,
         lastShotAt: 0,
-        burstQueue: [], // For proper burst timing
+        burstQueue: [],
 
-        // canvas
+        // Rendering
         ctx: null,
-        cw: 1024, ch: 640,
-        lastTick: performance.now(),
-        tickDelta: 0,
-        canvasElement: null,
+        previewCtx: null,
+        lastTick: 0,
+        animationId: null,
         
-        // Event listeners for cleanup
-        eventListeners: [],
-
         // Assets
-        assets: {},        // loaded Image objects keyed by name
+        assets: {},
         assetList: [
           { key: 'player', src: 'assets/player_ship.png' },
           { key: 'enemy_chaser', src: 'assets/enemy_chaser.png' },
@@ -171,43 +423,211 @@
           { key: 'enemy_runner', src: 'assets/enemy_runner.png' },
           { key: 'bullet_player', src: 'assets/bullet_yellow.png' },
           { key: 'bullet_enemy', src: 'assets/bullet_yellow.png' }
-          // Add or change these to real paths for your assets
         ]
       }
     },
+    
     computed: {
+      gameOverMessage() {
+      const w = Math.max(0, this.wave || 0);
+      // playful messaging per round
+      if (w <= 1) {
+        return "Oof — Round 1 already? Nice try... that was cute. 😅";
+      }
+      if (w === 2) {
+        return "Round 2? Getting warmer — nice try! 😉";
+      }
+      if (w === 3) {
+        return "Solid run — Round 3! Not bad at all. 👍";
+      }
+      // w > 3
+      return "Legendary — you made it past 3! Nice job! 🎉";
+    },
+
       weapon() { return this.weapons[this.weaponIndex] }
     },
+    
     methods: {
-      togglePause() { this.paused = !this.paused },
+      formatMs(ms) {
+        if (!ms) return '0:00';
+        const totalSec = Math.floor(ms / 1000);
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        return `${mins}:${secs.toString().padStart(2,'0')}`;
+      },
+
+      startGame() {
+        this.startTime = performance.now();
+        this.sessionTime = 0;
+        this.enemiesKilled = 0;
+        this.bulletsFired = 0;
+        this.gameState = 'playing';
+        this.restartGame();
+        this.requestPointerLock();
+        nextTick(() => {
+          this.initGameCanvas();
+          // Preload assets then start the loop
+          this.preloadAssets()
+            .then(() => {
+              this.startGameLoop();
+            })
+            .catch(() => {
+              // Continue even if assets fail to load
+              this.startGameLoop();
+            });
+        });
+      },
+      
+      exitToMenu() {
+        this.gameState = 'menu';
+        this.paused = false;
+        this.gameOver = false; // reset gameOver when leaving
+        this.exitPointerLock();
+        if (this.animationId) {
+          cancelAnimationFrame(this.animationId);
+          this.animationId = null;
+        }
+      },
+      
+      requestPointerLock() {
+        const canvas = this.$refs.gameCanvas;
+        if (canvas && canvas.requestPointerLock) {
+          canvas.requestPointerLock();
+        }
+      },
+      
+      exitPointerLock() {
+        if (document.exitPointerLock) {
+          document.exitPointerLock();
+        }
+      },
+      
+      initGameCanvas() {
+        const canvas = this.$refs.gameCanvas;
+        if (!canvas) return;
+        
+        this.ctx = canvas.getContext('2d');
+        this.canvasWidth = window.innerWidth;
+        this.canvasHeight = window.innerHeight;
+        canvas.width = this.canvasWidth;
+        canvas.height = this.canvasHeight;
+        
+        // Update player position to center of new canvas
+        this.player.x = this.canvasWidth / 2;
+        this.player.y = this.canvasHeight / 2;
+      },
+      
+      initPreviewCanvas() {
+        const canvas = this.$refs.previewCanvas;
+        if (!canvas) return;
+        
+        this.previewCtx = canvas.getContext('2d');
+        this.drawPreview();
+      },
+      
+      drawPreview() {
+        if (!this.previewCtx) return;
+        
+        const ctx = this.previewCtx;
+        const w = 800, h = 500;
+        
+        ctx.clearRect(0, 0, w, h);
+        
+        // Draw some preview elements
+        ctx.fillStyle = 'rgba(96,165,250,0.3)';
+        ctx.beginPath();
+        ctx.arc(w/2, h/2, 20, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw some enemy previews
+        ctx.fillStyle = 'rgba(251,113,133,0.4)';
+        for (let i = 0; i < 5; i++) {
+          const x = 100 + Math.random() * 600;
+          const y = 100 + Math.random() * 300;
+          ctx.beginPath();
+          ctx.arc(x, y, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Grid
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < w; x += 50) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+        for (let y = 0; y < h; y += 50) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+      },
+      
+      startGameLoop() {
+        this.lastTick = performance.now();
+        this.fpsLastTime = performance.now();
+        this.gameLoop();
+      },
+      
+      gameLoop() {
+        if (this.gameState !== 'playing') return;
+        
+        const now = performance.now();
+        const dt = Math.min(0.05, (now - this.lastTick) / 1000);
+        this.lastTick = now;
+
+        this.updateFPS();
+        
+        if (!this.paused) {
+          this.update(dt);
+        }
+        
+        this.draw();
+        this.animationId = requestAnimationFrame(() => this.gameLoop());
+      },
+      
+      togglePause() { 
+        if (this.gameOver) return; // can't resume from a death state
+        this.paused = !this.paused;
+        if (this.paused) {
+          this.exitPointerLock();
+        } else {
+          this.requestPointerLock();
+        }
+      },
       
       restartGame() {
-        // FIXED: Reset all player properties including velocity
+        this.startTime = performance.now();
+        this.sessionTime = 0;
+        this.enemiesKilled = 0;
+        this.bulletsFired = 0;
         this.score = 0;
         this.wave = 1;
         this.player.hp = this.player.maxHp;
-        this.player.x = this.cw / 2;
-        this.player.y = this.ch / 2;
-        this.player.vx = 0; // FIXED: Reset velocity
-        this.player.vy = 0; // FIXED: Reset velocity
+        this.player.x = this.canvasWidth / 2;
+        this.player.y = this.canvasHeight / 2;
+        this.player.vx = 0;
+        this.player.vy = 0;
         this.enemies = [];
         this.bullets = [];
         this.particles = [];
         this.burstQueue = [];
         this.enemiesSpawned = 0;
         this.paused = false;
-        
-        // FIXED: Clear all key states to prevent stuck movement
+        this.gameOver = false; // clear death flag on restart
         this.keys = {};
-        
-        // FIXED: Reset mouse state
         this.mouse.down = false;
-        
-        // Reset bullet pool
         this.initBulletPool();
+        
+        // Spawn initial enemies
+        for (let i = 0; i < 3; i++) {
+          this.spawnEnemy();
+        }
       },
 
-      // FIXED: Improved bullet pool management
       initBulletPool() {
         this.bullets = [];
         this.freeBullets = [];
@@ -218,105 +638,54 @@
         }
       },
 
-      spawnEnemy(type = 'chaser') {
-        const edge = Math.floor(Math.random() * 4);
-        let x = 0, y = 0;
-        if (edge === 0) { x = -30; y = Math.random() * this.ch }
-        if (edge === 1) { x = this.cw + 30; y = Math.random() * this.ch }
-        if (edge === 2) { x = Math.random() * this.cw; y = -30 }
-        if (edge === 3) { x = Math.random() * this.cw; y = this.ch + 30 }
-
-        const baseHp = { chaser: 20, brute: 40, runner: 12, shooter: 18 }[type] || 18;
-        const speed = { chaser: 65, brute: 35, runner: 150, shooter: 80 }[type] || 80;
-
-        const difficultyMod = this.difficulty === 'hard' ? 1.2 : this.difficulty === 'easy' ? 0.85 : 1;
-        
-        const enemy = {
-          id: Math.random().toString(36).slice(2),
-          x, y, r: 12 + Math.random() * 10, vx: 0, vy: 0,
-          type, 
-          rotation: 0,
-          hp: baseHp * (1 + this.wave * 0.12 * difficultyMod),
-          maxHp: baseHp, 
-          speed: speed * (1 + this.wave * 0.03), 
-          shootCooldown: 0,
-          // assign sprite key depending on type
-          spriteKey: (type === 'shooter') ? 'enemy_shooter'
-                    : (type === 'brute') ? 'enemy_brute'
-                    : (type === 'runner') ? 'enemy_runner'
-                    : 'enemy_chaser'
-        };
-        this.enemies.push(enemy);
-        this.enemiesSpawned++;
-      },
-
-      // FIXED: Use bullet pool efficiently
-      fireBullet(x, y, angle, speed, dmg, owner = 'player') {
-        if (this.freeBullets.length === 0) return null; // No bullets available
-        
-        const b = this.freeBullets.pop();
-        b.alive = true;
-        b.x = x;
-        b.y = y;
-        b.vx = Math.cos(angle) * speed;
-        b.vy = Math.sin(angle) * speed;
-        b.life = 2000;
-        b.birth = performance.now();
-        b.dmg = dmg;
-        b.owner = owner;
-        b.r = owner === 'player' ? 4 : 4;
-        b.angle = angle;           // <-- store angle
-        b.rotation = angle;        // <-- convenience alias (used for drawing)
-        // assign sprite key
-        b.spriteKey = (owner === 'player') ? 'bullet_player' : 'bullet_enemy';
-        return b;
-      },
-
-      // FIXED: More efficient bullet cleanup
-      returnBulletToPool(bullet) {
-        bullet.alive = false;
-        bullet.spriteKey = null;
-        this.freeBullets.push(bullet);
-      },
-
-      spawnParticles(x, y, color, count = 12) {
-        if (!this.showParticles) return;
-        for (let i = 0; i < count; i++) {
-          this.particles.push({
-            x, y,
-            vx: (Math.random() - 0.5) * 300,
-            vy: (Math.random() - 0.5) * 300,
-            life: 400 + Math.random() * 600,
-            birth: performance.now(),
-            r: 1 + Math.random() * 2,
-            color
-          });
+      updateFPS() {
+        this.fpsCounter++;
+        const now = performance.now();
+        if (now - this.fpsLastTime >= 1000) {
+          this.fps = this.fpsCounter;
+          this.fpsCounter = 0;
+          this.fpsLastTime = now;
         }
       },
 
       update(dt) {
-        if (this.paused) return;
         const now = performance.now();
-
-        // Update FPS counter
-        this.updateFPS();
-
-        // Process burst queue for proper timing
+        
         this.processBurstQueue(now);
+        this.updatePlayer(dt);
+        this.handleShooting(now);
+        this.updateBullets(dt);
+        this.updateEnemies(dt, now);
+        this.updateParticles(dt, now);
+        this.spawnEnemiesIfNeeded();
+        
+        if (this.score > this.wave * 400) {
+          this.wave++;
+        }
+        
+        if (this.player.hp <= 0 && !this.gameOver) {
+          // Player died: show game over pause overlay (no native confirm)
+          this.gameOver = true;
+          this.sessionTime = Math.max(0, performance.now() - this.startTime);
+          this.paused = true;
+          this.sessionTime = Math.max(0, performance.now() - this.startTime);
 
-        // Player movement input
+          this.exitPointerLock();
+        }
+      },
+
+      updatePlayer(dt) {
         const acc = CONSTANTS.ACCELERATION;
         let ax = 0, ay = 0;
-        if (this.keys['w'] || this.keys['ArrowUp']) ay -= 1;
-        if (this.keys['s'] || this.keys['ArrowDown']) ay += 1;
-        if (this.keys['a'] || this.keys['ArrowLeft']) ax -= 1;
-        if (this.keys['d'] || this.keys['ArrowRight']) ax += 1;
+        if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp']) ay -= 1;
+        if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown']) ay += 1;
+        if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft']) ax -= 1;
+        if (this.keys['d'] || this.keys['D'] || this.keys['ArrowRight']) ax += 1;
         
         const len = Math.hypot(ax, ay) || 1;
         this.player.vx += (ax / len) * acc * dt;
         this.player.vy += (ay / len) * acc * dt;
 
-        // Friction / clamp
         this.player.vx *= CONSTANTS.FRICTION;
         this.player.vy *= CONSTANTS.FRICTION;
         const maxSpeed = this.player.speed;
@@ -329,49 +698,10 @@
         this.player.x += this.player.vx * dt;
         this.player.y += this.player.vy * dt;
 
-        // Keep inside
-        this.player.x = Math.max(this.player.r, Math.min(this.cw - this.player.r, this.player.x));
-        this.player.y = Math.max(this.player.r, Math.min(this.ch - this.player.r, this.player.y));
-
-        // Shooting logic
-        this.handleShooting(now);
-
-        // Update bullets
-        this.updateBullets(dt);
-
-        // Update enemies
-        this.updateEnemies(dt, now);
-
-        // Update particles
-        this.updateParticles(dt, now);
-
-        // Spawn new enemies
-        this.spawnEnemiesIfNeeded();
-
-        // Increase difficulty
-        if (this.score > this.wave * 400) {
-          this.wave++;
-        }
-
-        // Death check
-        if (this.player.hp <= 0) {
-          this.paused = true;
-          setTimeout(() => alert('You died! Score: ' + this.score), 100);
-        }
+        this.player.x = Math.max(this.player.r, Math.min(this.canvasWidth - this.player.r, this.player.x));
+        this.player.y = Math.max(this.player.r, Math.min(this.canvasHeight - this.player.r, this.player.y));
       },
 
-      // FIXED: FPS calculation
-      updateFPS() {
-        this.fpsCounter++;
-        const now = performance.now();
-        if (now - this.fpsLastTime >= 1000) {
-          this.fps = this.fpsCounter;
-          this.fpsCounter = 0;
-          this.fpsLastTime = now;
-        }
-      },
-
-      // FIXED: Proper burst weapon implementation
       processBurstQueue(now) {
         for (let i = this.burstQueue.length - 1; i >= 0; i--) {
           const burst = this.burstQueue[i];
@@ -398,7 +728,6 @@
             }
           } else if (weapon.mode === 'burst') {
             if (now - this.lastShotAt > weapon.fireRate) {
-              // FIXED: Proper burst implementation
               this.burstQueue.push({
                 angle: this.getAimAngle(),
                 spread: weapon.spread,
@@ -408,141 +737,6 @@
               this.lastShotAt = now;
             }
           }
-        }
-      },
-
-      updateBullets(dt) {
-        this.bulletsAlive = 0;
-        for (let i = this.bullets.length - 1; i >= 0; i--) {
-          const b = this.bullets[i];
-          if (!b.alive) continue;
-          
-          b.x += b.vx * dt;
-          b.y += b.vy * dt;
-          b.life -= dt * 1000;
-          
-          if (b.life <= 0 || b.x < -40 || b.y < -40 || b.x > this.cw + 40 || b.y > this.ch + 40) {
-            this.returnBulletToPool(b);
-            continue;
-          }
-          this.bulletsAlive++;
-        }
-      },
-
-      updateEnemies(dt, now) {
-        // FIXED: Process enemies backwards to avoid index issues when removing
-        for (let i = this.enemies.length - 1; i >= 0; i--) {
-          const e = this.enemies[i];
-          const dx = this.player.x - e.x;
-          const dy = this.player.y - e.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const nx = dx / dist, ny = dy / dist;
-
-          // FIXED: Improved AI behaviors
-          if (e.type === 'runner') {
-            // Runner tries to flank with more intelligent movement
-            const tangentX = -ny;
-            const tangentY = nx;
-            e.vx = (nx * 0.7 + tangentX * 0.3) * e.speed;
-            e.vy = (ny * 0.7 + tangentY * 0.3) * e.speed;
-          } else if (e.type === 'shooter') {
-            // FIXED: Shooter leads target slightly
-            e.shootCooldown -= dt * 1000;
-            if (e.shootCooldown <= 0) {
-              const leadTime = dist / 320; // Bullet speed
-              const futureX = this.player.x + this.player.vx * leadTime;
-              const futureY = this.player.y + this.player.vy * leadTime;
-              const ang = Math.atan2(futureY - e.y, futureX - e.x);
-              
-              this.fireBullet(e.x, e.y, ang, 320, 8, 'enemy');
-              e.shootCooldown = 1200 + Math.random() * 600;
-            }
-            // Shooter moves slower while aiming
-            e.vx = nx * e.speed * 0.5;
-            e.vy = ny * e.speed * 0.5;
-          } else {
-            // Basic chaser movement
-            e.vx = nx * e.speed;
-            e.vy = ny * e.speed;
-          }
-
-          e.x += e.vx * dt;
-          e.y += e.vy * dt;
-          // determine target angle: prefer movement vector, fallback to angle-to-player
-          let target;
-          if (Math.abs(e.vx) > 0.0001 || Math.abs(e.vy) > 0.0001) {
-            target = Math.atan2(e.vy, e.vx);
-          } else {
-            target = Math.atan2(this.player.y - e.y, this.player.x - e.x);
-          }
-
-          // smooth rotation: move e.rotation towards target via shortest arc
-          const diff = ((target - e.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
-          e.rotation += diff * 0.15; // 0.15 smoothing factor (0..1) — tweak for snappier/slower
-
-
-          // Collision with player
-          if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < e.r + this.player.r) {
-            this.player.hp -= CONSTANTS.PLAYER_CONTACT_DAMAGE;
-            this.spawnParticles(e.x, e.y, '#ff6b6b', 8);
-            e.hp = 0; // Mark for removal
-          }
-
-          // Bullet hits
-          let enemyHit = false;
-          for (const b of this.bullets) {
-            if (!b.alive || b.owner === 'enemy') continue;
-            if (Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r) {
-              e.hp -= b.dmg;
-              this.returnBulletToPool(b);
-              this.spawnParticles(b.x, b.y, '#ffd166', 6);
-              if (e.hp <= 0) {
-                enemyHit = true;
-                break;
-              }
-            }
-          }
-
-          // FIXED: Remove enemy properly
-          if (e.hp <= 0) {
-            this.enemies.splice(i, 1);
-            this.score += Math.floor(10 + e.maxHp * 1.5);
-            this.spawnParticles(e.x, e.y, '#60a5fa', 18);
-          }
-        }
-
-        // Enemy bullets hitting player
-        for (const b of this.bullets) {
-          if (!b.alive || b.owner !== 'enemy') continue;
-          if (Math.hypot(b.x - this.player.x, b.y - this.player.y) < b.r + this.player.r) {
-            this.returnBulletToPool(b);
-            this.player.hp -= CONSTANTS.ENEMY_BULLET_DAMAGE;
-            this.spawnParticles(b.x, b.y, '#ff6b6b', 10);
-          }
-        }
-      },
-
-      // FIXED: More efficient particle management
-      updateParticles(dt, now) {
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-          const p = this.particles[i];
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          p.vx *= 0.98;
-          p.vy *= 0.98;
-          p.life -= dt * 1000;
-          
-          if (p.life <= 0 || p.x < -50 || p.y < -50 || p.x > this.cw + 50 || p.y > this.ch + 50) {
-            this.particles.splice(i, 1);
-          }
-        }
-      },
-
-      spawnEnemiesIfNeeded() {
-        if (this.enemies.length < 1 + Math.floor(this.wave * 2 * this.spawnMultiplier)) {
-          const types = ['chaser', 'runner', 'shooter', 'brute'];
-          const t = types[Math.floor(Math.random() * types.length)];
-          this.spawnEnemy(t);
         }
       },
 
@@ -558,9 +752,7 @@
           this.shootAngle(angle + (Math.random() - 0.5) * (w.spread || 0) * Math.PI / 180);
         }
         
-        // Muzzle particle & recoil
         this.spawnParticles(this.player.x + Math.cos(angle) * 20, this.player.y + Math.sin(angle) * 20, '#ffd166', 6);
-        // Small recoil
         this.player.vx -= Math.cos(angle) * CONSTANTS.PLAYER_RECOIL;
         this.player.vy -= Math.sin(angle) * CONSTANTS.PLAYER_RECOIL;
       },
@@ -574,36 +766,225 @@
         return Math.atan2(this.mouse.y - this.player.y, this.mouse.x - this.player.x);
       },
 
-      gameLoop(now) {
-        const dt = Math.min(0.05, (now - this.lastTick) / 1000);
-        this.lastTick = now;
-
-        if (!this.paused) {
-          this.update(dt);
+      fireBullet(x, y, angle, speed, dmg, owner = 'player') {
+        if (this.freeBullets.length === 0) return null;
+        
+        const b = this.freeBullets.pop();
+        b.alive = true;
+        b.x = x;
+        b.y = y;
+        b.vx = Math.cos(angle) * speed;
+        b.vy = Math.sin(angle) * speed;
+        b.life = 3000;
+        b.birth = performance.now();
+        b.dmg = dmg;
+        b.owner = owner;
+        b.r = 4;
+        b.angle = angle;
+        b.rotation = angle;
+        b.spriteKey = owner === 'player' ? 'bullet_player' : 'bullet_enemy';
+        // count only player-fired bullets
+        if (owner === 'player') {
+          this.bulletsFired = (this.bulletsFired || 0) + 1;
         }
 
-        this.draw();
-        requestAnimationFrame(this.gameLoop.bind(this));
+        return b;
+      },
+
+      returnBulletToPool(bullet) {
+        bullet.alive = false;
+        bullet.spriteKey = null;
+        this.freeBullets.push(bullet);
+      },
+
+      updateBullets(dt) {
+        this.bulletsAlive = 0;
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+          const b = this.bullets[i];
+          if (!b.alive) continue;
+          
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.life -= dt * 1000;
+          
+          if (b.life <= 0 || b.x < -40 || b.y < -40 || b.x > this.canvasWidth + 40 || b.y > this.canvasHeight + 40) {
+            this.returnBulletToPool(b);
+            continue;
+          }
+          this.bulletsAlive++;
+        }
+      },
+
+      spawnEnemy(type = 'chaser') {
+        const edge = Math.floor(Math.random() * 4);
+        let x = 0, y = 0;
+        const margin = 50;
+        if (edge === 0) { x = -margin; y = Math.random() * this.canvasHeight }
+        if (edge === 1) { x = this.canvasWidth + margin; y = Math.random() * this.canvasHeight }
+        if (edge === 2) { x = Math.random() * this.canvasWidth; y = -margin }
+        if (edge === 3) { x = Math.random() * this.canvasWidth; y = this.canvasHeight + margin }
+
+        const baseHp = { chaser: 20, brute: 40, runner: 12, shooter: 18 }[type] || 18;
+        const speed = { chaser: 65, brute: 35, runner: 150, shooter: 80 }[type] || 80;
+        const difficultyMod = this.difficulty === 'hard' ? 1.2 : this.difficulty === 'easy' ? 0.85 : 1;
+        
+        const enemy = {
+          id: Math.random().toString(36).slice(2),
+          x, y, r: 12 + Math.random() * 8, vx: 0, vy: 0,
+          type, rotation: 0,
+          hp: baseHp * (1 + this.wave * 0.12 * difficultyMod),
+          maxHp: baseHp, 
+          speed: speed * (1 + this.wave * 0.03), 
+          shootCooldown: 0,
+          spriteKey: (type === 'shooter') ? 'enemy_shooter'
+                    : (type === 'brute') ? 'enemy_brute'
+                    : (type === 'runner') ? 'enemy_runner'
+                    : 'enemy_chaser'
+        };
+        this.enemies.push(enemy);
+        this.enemiesSpawned++;
+      },
+
+      updateEnemies(dt, now) {
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const e = this.enemies[i];
+          const dx = this.player.x - e.x;
+          const dy = this.player.y - e.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const nx = dx / dist, ny = dy / dist;
+
+          if (e.type === 'runner') {
+            const tangentX = -ny;
+            const tangentY = nx;
+            e.vx = (nx * 0.7 + tangentX * 0.3) * e.speed;
+            e.vy = (ny * 0.7 + tangentY * 0.3) * e.speed;
+          } else if (e.type === 'shooter') {
+            e.shootCooldown -= dt * 1000;
+            if (e.shootCooldown <= 0) {
+              const leadTime = dist / 320;
+              const futureX = this.player.x + this.player.vx * leadTime;
+              const futureY = this.player.y + this.player.vy * leadTime;
+              const ang = Math.atan2(futureY - e.y, futureX - e.x);
+              
+              this.fireBullet(e.x, e.y, ang, 320, 8, 'enemy');
+              e.shootCooldown = 1200 + Math.random() * 600;
+            }
+            e.vx = nx * e.speed * 0.5;
+            e.vy = ny * e.speed * 0.5;
+          } else {
+            e.vx = nx * e.speed;
+            e.vy = ny * e.speed;
+          }
+
+          e.x += e.vx * dt;
+          e.y += e.vy * dt;
+          
+          let target;
+          if (Math.abs(e.vx) > 0.0001 || Math.abs(e.vy) > 0.0001) {
+            target = Math.atan2(e.vy, e.vx);
+          } else {
+            target = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+          }
+
+          const diff = ((target - e.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+          e.rotation += diff * 0.15;
+
+          if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < e.r + this.player.r) {
+            this.player.hp -= CONSTANTS.PLAYER_CONTACT_DAMAGE;
+            this.spawnParticles(e.x, e.y, '#ff6b6b', 8);
+            e.hp = 0;
+          }
+
+          let enemyHit = false;
+          for (const b of this.bullets) {
+            if (!b.alive || b.owner === 'enemy') continue;
+            if (Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r) {
+              e.hp -= b.dmg;
+              this.returnBulletToPool(b);
+              this.spawnParticles(b.x, b.y, '#ffd166', 6);
+              if (e.hp <= 0) {
+                enemyHit = true;
+                break;
+              }
+            }
+          }
+
+          if (e.hp <= 0) {
+            this.enemies.splice(i, 1);
+            this.enemiesKilled = (this.enemiesKilled || 0) + 1;
+            this.score += Math.floor(10 + e.maxHp * 1.5);
+            this.spawnParticles(e.x, e.y, '#60a5fa', 18);
+          }
+        }
+
+        for (const b of this.bullets) {
+          if (!b.alive || b.owner !== 'enemy') continue;
+          if (Math.hypot(b.x - this.player.x, b.y - this.player.y) < b.r + this.player.r) {
+            this.returnBulletToPool(b);
+            this.player.hp -= CONSTANTS.ENEMY_BULLET_DAMAGE;
+            this.spawnParticles(b.x, b.y, '#ff6b6b', 10);
+          }
+        }
+      },
+
+      spawnParticles(x, y, color, count = 12) {
+        if (!this.showParticles) return;
+        for (let i = 0; i < count; i++) {
+          this.particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 300,
+            vy: (Math.random() - 0.5) * 300,
+            life: 400 + Math.random() * 600,
+            birth: performance.now(),
+            r: 1 + Math.random() * 2,
+            color
+          });
+        }
+      },
+
+      updateParticles(dt, now) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= 0.98;
+          p.vy *= 0.98;
+          p.life -= dt * 1000;
+          
+          if (p.life <= 0 || p.x < -50 || p.y < -50 || p.x > this.canvasWidth + 50 || p.y > this.canvasHeight + 50) {
+            this.particles.splice(i, 1);
+          }
+        }
+      },
+
+      spawnEnemiesIfNeeded() {
+        if (this.enemies.length < 1 + Math.floor(this.wave * 2 * this.spawnMultiplier)) {
+          const types = ['chaser', 'runner', 'shooter', 'brute'];
+          const t = types[Math.floor(Math.random() * types.length)];
+          this.spawnEnemy(t);
+        }
       },
 
       draw() {
+        if (!this.ctx) return;
+        
         const ctx = this.ctx;
-        ctx.clearRect(0, 0, this.cw, this.ch);
+        ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight);
 
-        // Background grid (subtle)
+        // Background grid
         ctx.save();
         ctx.strokeStyle = 'rgba(255,255,255,0.02)';
         ctx.lineWidth = 1;
-        for (let x = 0; x < this.cw; x += 64) {
+        for (let x = 0; x < this.canvasWidth; x += 64) {
           ctx.beginPath();
           ctx.moveTo(x, 0);
-          ctx.lineTo(x, this.ch);
+          ctx.lineTo(x, this.canvasHeight);
           ctx.stroke();
         }
-        for (let y = 0; y < this.ch; y += 64) {
+        for (let y = 0; y < this.canvasHeight; y += 64) {
           ctx.beginPath();
           ctx.moveTo(0, y);
-          ctx.lineTo(this.cw, y);
+          ctx.lineTo(this.canvasWidth, y);
           ctx.stroke();
         }
         ctx.restore();
@@ -619,24 +1000,20 @@
         ctx.globalAlpha = 1;
 
         // Draw bullets
-        // Draw bullets (rotated if sprite present)
-        ctx.lineWidth = 1;
         for (const b of this.bullets) {
           if (!b.alive) continue;
 
           const img = b.spriteKey ? this.assets[b.spriteKey] : null;
-          const size = (b.r || 4) * 40; // use r*2 for consistent sizing (adjust multiplier if you want bigger)
+          const size = (b.r || 4) * 40;
 
           if (img) {
-            // compute rotation: prefer stored rotation, fallback to velocity angle
             const rot = (typeof b.rotation === 'number') ? b.rotation : Math.atan2(b.vy, b.vx);
             ctx.save();
             ctx.translate(b.x, b.y);
-            ctx.rotate(rot + SPRITE_ANGLE_OFFSET); // sprite faces UP, so add offset
+            ctx.rotate(rot + SPRITE_ANGLE_OFFSET);
             ctx.drawImage(img, -size/2, -size/2, size, size);
             ctx.restore();
           } else {
-            // fallback circle
             ctx.beginPath();
             ctx.fillStyle = b.owner === 'player' ? '#ffd166' : '#ff6b6b';
             ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
@@ -645,36 +1022,35 @@
         }
 
         // Draw enemies
-      for (const e of this.enemies) {
-        ctx.save();
-        ctx.translate(e.x, e.y);
+        for (const e of this.enemies) {
+          ctx.save();
+          ctx.translate(e.x, e.y);
+          ctx.rotate(e.rotation + SPRITE_ANGLE_OFFSET);
 
-        // e.rotation is an angle where 0 points to the right, but sprite faces UP -> add offset
-        ctx.rotate(e.rotation + SPRITE_ANGLE_OFFSET);
+          if (e.spriteKey && this.assets[e.spriteKey]) {
+            const img = this.assets[e.spriteKey];
+            const size = e.r * 4;
+            ctx.drawImage(img, -size/2, -size/2, size, size);
+          } else {
+            ctx.beginPath();
+            ctx.fillStyle = '#fb7185';
+            ctx.arc(0, 0, e.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
 
-        if (e.spriteKey && this.assets[e.spriteKey]) {
-          const img = this.assets[e.spriteKey];
-          const size = e.r * 4;
-          ctx.drawImage(img, -size/2, -size/2, size, size);
-        } else {
-          // fallback circle body when no sprite
-          ctx.beginPath();
-          ctx.fillStyle = '#fb7185';
-          ctx.arc(0, 0, e.r, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.restore();
+
+          // HP bar
+          const barWidth = e.r * 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(e.x - barWidth/2, e.y - e.r - 12, barWidth, 4);
+          ctx.fillStyle = '#60a5fa';
+          ctx.fillRect(e.x - barWidth/2, e.y - e.r - 12, (e.hp / e.maxHp) * barWidth, 4);
         }
-
-        ctx.restore();
-
-        // HP bar (world-space still uses e.x/e.y)
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r * 2, 4);
-        ctx.fillStyle = '#60a5fa';
-        ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.hp / e.maxHp) * e.r * 2, 4);
-      }
 
         // Player
         const ang = this.getAimAngle();
+        
         // Shadow
         ctx.beginPath();
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -687,18 +1063,27 @@
           const desiredH = this.player.r * 5;
           ctx.save();
           ctx.translate(this.player.x, this.player.y);
-          ctx.rotate(ang + SPRITE_ANGLE_OFFSET);
+          // Use a smoothed visual rotation for the rendered sprite (keeps aiming immediate)
+          const ROT_LERP = 0.25;
+          let diff = ((ang - this.player.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+          this.player.rotation += diff * ROT_LERP;
+          ctx.rotate(this.player.rotation + SPRITE_ANGLE_OFFSET);
           ctx.drawImage(playerImg, -desiredW/2, -desiredH/2, desiredW, desiredH);
           ctx.restore();
         } else {
           ctx.save();
           ctx.translate(this.player.x, this.player.y);
-          ctx.rotate(ang + SPRITE_ANGLE_OFFSET);
+          const ROT_LERP = 0.25;
+          let diff = ((ang - this.player.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+          this.player.rotation += diff * ROT_LERP;
+          ctx.rotate(this.player.rotation + SPRITE_ANGLE_OFFSET);
+          
           // Body
           ctx.beginPath();
           ctx.fillStyle = '#60a5fa';
           ctx.arc(0, 0, this.player.r, 0, Math.PI * 2);
           ctx.fill();
+          
           // Gun
           ctx.fillStyle = '#0ea5a3';
           ctx.fillRect(8, -5, 18, 10);
@@ -708,44 +1093,88 @@
         // Crosshair
         ctx.beginPath();
         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-        ctx.lineWidth = 1;
-        ctx.moveTo(this.mouse.x - 8, this.mouse.y);
-        ctx.lineTo(this.mouse.x + 8, this.mouse.y);
-        ctx.moveTo(this.mouse.x, this.mouse.y - 8);
-        ctx.lineTo(this.mouse.x, this.mouse.y + 8);
+        ctx.lineWidth = 2;
+        ctx.moveTo(this.mouse.x - 12, this.mouse.y);
+        ctx.lineTo(this.mouse.x + 12, this.mouse.y);
+        ctx.moveTo(this.mouse.x, this.mouse.y - 12);
+        ctx.lineTo(this.mouse.x, this.mouse.y + 12);
         ctx.stroke();
-
-        // HUD overlay in canvas
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(8, this.ch - 36, 300, 28);
-        ctx.fillStyle = '#fff';
-        ctx.font = '14px Inter, Arial';
-        ctx.fillText('HP: ' + Math.max(0, Math.round(this.player.hp)) + '  |  Score: ' + this.score + '  |  FPS: ' + this.fps, 16, this.ch - 16);
       },
 
-      // FIXED: Proper mouse coordinate calculation
-      getMousePosition(e) {
-        const rect = this.canvasElement.getBoundingClientRect();
-        const scaleX = this.canvasElement.width / rect.width;
-        const scaleY = this.canvasElement.height / rect.height;
-        
-        return {
-          x: (e.clientX - rect.left) * scaleX,
-          y: (e.clientY - rect.top) * scaleY
-        };
+      // Event handlers
+      onMouseMove(e) {
+        if (document.pointerLockElement) {
+          // Use movement deltas when pointer is locked
+          // clamp huge deltas to avoid jump when reacquiring pointer lock
+          const mx = Math.max(-80, Math.min(80, e.movementX));
+          const my = Math.max(-80, Math.min(80, e.movementY));
+          this.mouse.x += mx;
+          this.mouse.y += my;
+          
+          // Keep mouse within canvas bounds
+          this.mouse.x = Math.max(0, Math.min(this.canvasWidth, this.mouse.x));
+          this.mouse.y = Math.max(0, Math.min(this.canvasHeight, this.mouse.y));
+        } else {
+          // Fallback to regular mouse position
+          const rect = this.$refs.gameCanvas.getBoundingClientRect();
+          const scaleX = this.canvasWidth / rect.width;
+          const scaleY = this.canvasHeight / rect.height;
+          this.mouse.x = (e.clientX - rect.left) * scaleX;
+          this.mouse.y = (e.clientY - rect.top) * scaleY;
+        }
       },
 
-      // FIXED: Clean up event listeners
-      cleanup() {
-        this.eventListeners.forEach(({ element, event, handler }) => {
-          element.removeEventListener(event, handler);
-        });
-        this.eventListeners = [];
+      onMouseDown(e) {
+        if (e.button === 0) {
+          this.mouse.down = true;
+          const weapon = this.weapon;
+          if (weapon.mode === 'pump') {
+            if (performance.now() - this.lastShotAt > 150) {
+              this.shootOne();
+              this.lastShotAt = performance.now();
+            }
+          }
+        }
       },
 
-      addEventListenerWithCleanup(element, event, handler) {
-        element.addEventListener(event, handler);
-        this.eventListeners.push({ element, event, handler });
+      onMouseUp(e) {
+        if (e.button === 0) {
+          this.mouse.down = false;
+        }
+      },
+
+      onMouseLeave() {
+        this.mouse.down = false;
+      },
+
+      onWheel(e) {
+        e.preventDefault();
+        if (e.deltaY > 0) {
+          this.weaponIndex = (this.weaponIndex + 1) % this.weapons.length;
+        } else {
+          this.weaponIndex = (this.weaponIndex - 1 + this.weapons.length) % this.weapons.length;
+        }
+      },
+
+      onKeyDown(e) {
+        this.keys[e.key] = true;
+        if (e.key.toLowerCase() === 'p' || e.key === 'Escape') {
+          e.preventDefault();
+          this.togglePause();
+        }
+      },
+
+      onKeyUp(e) {
+        this.keys[e.key] = false;
+      },
+
+      onResize() {
+        if (this.gameState === 'playing' && this.$refs.gameCanvas) {
+          this.canvasWidth = window.innerWidth;
+          this.canvasHeight = window.innerHeight;
+          this.$refs.gameCanvas.width = this.canvasWidth;
+          this.$refs.gameCanvas.height = this.canvasHeight;
+        }
       },
 
       // Asset preloading
@@ -764,9 +1193,8 @@
             img.src = a.src;
           });
         });
-        // We don't fail catastrophically if one fails; return Promise.allSettled so we can continue.
+        
         return Promise.allSettled(promises).then(results => {
-          // log failures but proceed
           results.forEach((r, i) => {
             if (r.status === 'rejected') {
               console.warn('Asset failed:', this.assetList[i].src);
@@ -778,85 +1206,35 @@
     },
 
     mounted() {
-      const canvas = document.getElementById('gameCanvas');
-      this.canvasElement = canvas;
-      this.ctx = canvas.getContext('2d');
-      this.cw = canvas.width;
-      this.ch = canvas.height;
-      this.lastTick = performance.now();
-      this.fpsLastTime = performance.now();
-
-      // FIXED: Initialize bullet pool properly
-      this.initBulletPool();
-
-      // FIXED: Add event listeners with proper cleanup
-      this.addEventListenerWithCleanup(canvas, 'mousemove', (e) => {
-        const pos = this.getMousePosition(e);
-        this.mouse.x = pos.x;
-        this.mouse.y = pos.y;
+      // Initialize preview
+      nextTick(() => {
+        this.initPreviewCanvas();
       });
 
-      this.addEventListenerWithCleanup(canvas, 'mousedown', (e) => {
-        if (e.button === 0) {
-          this.mouse.down = true;
-          // For pump/shotgun, allow single shot on down
-          const w = this.weapon;
-          if (w.mode === 'pump') {
-            if (performance.now() - this.lastShotAt > 150) {
-              this.shootOne();
-              this.lastShotAt = performance.now();
-            }
-          }
+      // Add global event listeners
+      window.addEventListener('keydown', this.onKeyDown);
+      window.addEventListener('keyup', this.onKeyUp);
+      window.addEventListener('resize', this.onResize);
+      
+      // Handle pointer lock changes
+      document.addEventListener('pointerlockchange', () => {
+        if (!document.pointerLockElement && this.gameState === 'playing' && !this.paused) {
+          this.paused = true;
         }
       });
-
-      this.addEventListenerWithCleanup(window, 'mouseup', (e) => {
-        if (e.button === 0) this.mouse.down = false;
-      });
-
-      // FIXED: Prevent default on wheel and handle weapon switching properly
-      this.addEventListenerWithCleanup(canvas, 'wheel', (e) => {
-        e.preventDefault();
-        if (e.deltaY > 0) {
-          this.weaponIndex = (this.weaponIndex + 1) % this.weapons.length;
-        } else {
-          this.weaponIndex = (this.weaponIndex - 1 + this.weapons.length) % this.weapons.length;
-        }
-      });
-
-      this.addEventListenerWithCleanup(window, 'keydown', (e) => {
-        this.keys[e.key] = true;
-        if (e.key.toLowerCase() === 'p') this.togglePause();
-      });
-
-      this.addEventListenerWithCleanup(window, 'keyup', (e) => {
-        this.keys[e.key] = false;
-      });
-
-      // Handle mouse leaving canvas - stop firing
-      this.addEventListenerWithCleanup(canvas, 'mouseleave', () => {
-        this.mouse.down = false;
-      });
-
-      // Preload assets then start the loop (if preload fails, still start)
-      this.preloadAssets()
-        .then(() => {
-          requestAnimationFrame(this.gameLoop.bind(this));
-        })
-        .catch(() => {
-          // shouldn't happen because we use allSettled, but fallback
-          requestAnimationFrame(this.gameLoop.bind(this));
-        });
-
-      // Initial spawns
-      for (let i = 0; i < 3; i++) {
-        this.spawnEnemy();
-      }
     },
 
-    // FIXED: Clean up when component is destroyed
     beforeUnmount() {
-      this.cleanup();
+      // Clean up
+      window.removeEventListener('keydown', this.onKeyDown);
+      window.removeEventListener('keyup', this.onKeyUp);
+      window.removeEventListener('resize', this.onResize);
+      
+      if (this.animationId) {
+        cancelAnimationFrame(this.animationId);
+      }
+      
+      this.exitPointerLock();
     }
   }).mount('#app');
 </script>
