@@ -92,529 +92,608 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script>
-    const { createApp, onMounted, reactive, onUnmounted } = Vue;
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script>
+  const { createApp, onMounted, reactive, onUnmounted } = Vue;
 
-    // Constants
-    const CONSTANTS = {
-      PLAYER_CONTACT_DAMAGE: 6,
-      PLAYER_RECOIL: 40,
-      ENEMY_CONTACT_DAMAGE: 9999,
-      ENEMY_BULLET_DAMAGE: 12,
-      FRICTION: 0.92,
-      ACCELERATION: 1200,
-      PARTICLE_LIFETIME: 800,
-      MAX_BULLETS: 120,
-      BURST_DELAY: 50, // ms between burst shots
-    };
+  // Constants
+  const CONSTANTS = {
+    PLAYER_CONTACT_DAMAGE: 6,
+    PLAYER_RECOIL: 40,
+    ENEMY_CONTACT_DAMAGE: 9999,
+    ENEMY_BULLET_DAMAGE: 12,
+    FRICTION: 0.92,
+    ACCELERATION: 1200,
+    PARTICLE_LIFETIME: 800,
+    MAX_BULLETS: 120,
+    BURST_DELAY: 50, // ms between burst shots
+  };
+  // sprite front points UP, so rotate by +90deg (PI/2) to align
+  const SPRITE_ANGLE_OFFSET = Math.PI / 2;
 
-    createApp({
-      data() {
-        return {
-          fps: 0,
-          fpsCounter: 0,
-          fpsLastTime: 0,
-          score: 0,
-          wave: 1,
-          paused: false,
-          difficulty: 'normal',
-          spawnMultiplier: 1.0,
-          showParticles: true,
 
-          // Debug counts
-          bulletsAlive: 0,
-          enemiesSpawned: 0,
+  createApp({
+    data() {
+      return {
+        fps: 0,
+        fpsCounter: 0,
+        fpsLastTime: 0,
+        score: 0,
+        wave: 1,
+        paused: false,
+        difficulty: 'normal',
+        spawnMultiplier: 1.0,
+        showParticles: true,
 
-          // Game internals
-          player: {
-            x: 512, y: 320, r: 14, speed: 260, vx: 0, vy: 0,
-            hp: 100, maxHp: 100
-          },
-          enemies: [],
-          bullets: [],
-          particles: [],
-          freeBullets: [], // Pool of available bullets
-          mouse: { x: 512, y: 320, down: false },
-          keys: {},
+        // Debug counts
+        bulletsAlive: 0,
+        enemiesSpawned: 0,
 
-          weapons: [
-            { name: 'Pistol', mode: 'semi', fireRate: 200, bulletSpeed: 520, dmg: 18, spread: 0, auto: false },
-            { name: 'SMG', mode: 'auto', fireRate: 70, bulletSpeed: 700, dmg: 8, spread: 6, auto: true },
-            { name: 'Shotgun', mode: 'pump', fireRate: 600, bulletSpeed: 420, dmg: 9, spread: 18, pellets: 7, auto: false },
-            { name: 'Plasma', mode: 'burst', fireRate: 120, bulletSpeed: 500, dmg: 12, spread: 8, burst: 3, auto: true }
-          ],
-          weaponIndex: 0,
-          lastShotAt: 0,
-          burstQueue: [], // For proper burst timing
+        // Game internals
+        player: {
+          x: 512, y: 320, r: 14, speed: 260, vx: 0, vy: 0,
+          hp: 100, maxHp: 100
+        },
+        enemies: [],
+        bullets: [],
+        particles: [],
+        freeBullets: [], // Pool of available bullets
+        mouse: { x: 512, y: 320, down: false },
+        keys: {},
 
-          // canvas
-          ctx: null,
-          cw: 1024, ch: 640,
-          lastTick: performance.now(),
-          tickDelta: 0,
-          canvasElement: null,
-          
-          // Event listeners for cleanup
-          eventListeners: []
+        weapons: [
+          { name: 'Pistol', mode: 'semi', fireRate: 200, bulletSpeed: 520, dmg: 18, spread: 0, auto: false },
+          { name: 'SMG', mode: 'auto', fireRate: 70, bulletSpeed: 700, dmg: 8, spread: 6, auto: true },
+          { name: 'Shotgun', mode: 'pump', fireRate: 600, bulletSpeed: 420, dmg: 9, spread: 18, pellets: 7, auto: false },
+          { name: 'Plasma', mode: 'burst', fireRate: 120, bulletSpeed: 500, dmg: 12, spread: 8, burst: 3, auto: true }
+        ],
+        weaponIndex: 0,
+        lastShotAt: 0,
+        burstQueue: [], // For proper burst timing
+
+        // canvas
+        ctx: null,
+        cw: 1024, ch: 640,
+        lastTick: performance.now(),
+        tickDelta: 0,
+        canvasElement: null,
+        
+        // Event listeners for cleanup
+        eventListeners: [],
+
+        // Assets
+        assets: {},        // loaded Image objects keyed by name
+        assetList: [
+          { key: 'player', src: 'assets/player_ship.png' },
+          { key: 'enemy_chaser', src: 'assets/enemy_chaser.png' },
+          { key: 'enemy_shooter', src: 'assets/enemy_shooter.png' },
+          { key: 'enemy_brute', src: 'assets/enemy_brute.png' },
+          { key: 'enemy_runner', src: 'assets/enemy_runner.png' },
+          { key: 'bullet_player', src: 'assets/bullet_yellow.png' },
+          { key: 'bullet_enemy', src: 'assets/bullet_yellow.png' }
+          // Add or change these to real paths for your assets
+        ]
+      }
+    },
+    computed: {
+      weapon() { return this.weapons[this.weaponIndex] }
+    },
+    methods: {
+      togglePause() { this.paused = !this.paused },
+      
+      restartGame() {
+        // FIXED: Reset all player properties including velocity
+        this.score = 0;
+        this.wave = 1;
+        this.player.hp = this.player.maxHp;
+        this.player.x = this.cw / 2;
+        this.player.y = this.ch / 2;
+        this.player.vx = 0; // FIXED: Reset velocity
+        this.player.vy = 0; // FIXED: Reset velocity
+        this.enemies = [];
+        this.bullets = [];
+        this.particles = [];
+        this.burstQueue = [];
+        this.enemiesSpawned = 0;
+        this.paused = false;
+        
+        // FIXED: Clear all key states to prevent stuck movement
+        this.keys = {};
+        
+        // FIXED: Reset mouse state
+        this.mouse.down = false;
+        
+        // Reset bullet pool
+        this.initBulletPool();
+      },
+
+      // FIXED: Improved bullet pool management
+      initBulletPool() {
+        this.bullets = [];
+        this.freeBullets = [];
+        for (let i = 0; i < CONSTANTS.MAX_BULLETS; i++) {
+          const bullet = { alive: false, spriteKey: null };
+          this.bullets.push(bullet);
+          this.freeBullets.push(bullet);
         }
       },
-      computed: {
-        weapon() { return this.weapons[this.weaponIndex] }
-      },
-      methods: {
-        togglePause() { this.paused = !this.paused },
+
+      spawnEnemy(type = 'chaser') {
+        const edge = Math.floor(Math.random() * 4);
+        let x = 0, y = 0;
+        if (edge === 0) { x = -30; y = Math.random() * this.ch }
+        if (edge === 1) { x = this.cw + 30; y = Math.random() * this.ch }
+        if (edge === 2) { x = Math.random() * this.cw; y = -30 }
+        if (edge === 3) { x = Math.random() * this.cw; y = this.ch + 30 }
+
+        const baseHp = { chaser: 20, brute: 40, runner: 12, shooter: 18 }[type] || 18;
+        const speed = { chaser: 65, brute: 35, runner: 150, shooter: 80 }[type] || 80;
+
+        const difficultyMod = this.difficulty === 'hard' ? 1.2 : this.difficulty === 'easy' ? 0.85 : 1;
         
-        restartGame() {
-          // FIXED: Reset all player properties including velocity
-          this.score = 0;
-          this.wave = 1;
-          this.player.hp = this.player.maxHp;
-          this.player.x = this.cw / 2;
-          this.player.y = this.ch / 2;
-          this.player.vx = 0; // FIXED: Reset velocity
-          this.player.vy = 0; // FIXED: Reset velocity
-          this.enemies = [];
-          this.bullets = [];
-          this.particles = [];
-          this.burstQueue = [];
-          this.enemiesSpawned = 0;
-          this.paused = false;
-          
-          // FIXED: Clear all key states to prevent stuck movement
-          this.keys = {};
-          
-          // FIXED: Reset mouse state
-          this.mouse.down = false;
-          
-          // Reset bullet pool
-          this.initBulletPool();
-        },
+        const enemy = {
+          id: Math.random().toString(36).slice(2),
+          x, y, r: 12 + Math.random() * 10, vx: 0, vy: 0,
+          type, 
+          rotation: 0,
+          hp: baseHp * (1 + this.wave * 0.12 * difficultyMod),
+          maxHp: baseHp, 
+          speed: speed * (1 + this.wave * 0.03), 
+          shootCooldown: 0,
+          // assign sprite key depending on type
+          spriteKey: (type === 'shooter') ? 'enemy_shooter'
+                    : (type === 'brute') ? 'enemy_brute'
+                    : (type === 'runner') ? 'enemy_runner'
+                    : 'enemy_chaser'
+        };
+        this.enemies.push(enemy);
+        this.enemiesSpawned++;
+      },
 
-        // FIXED: Improved bullet pool management
-        initBulletPool() {
-          this.bullets = [];
-          this.freeBullets = [];
-          for (let i = 0; i < CONSTANTS.MAX_BULLETS; i++) {
-            const bullet = { alive: false };
-            this.bullets.push(bullet);
-            this.freeBullets.push(bullet);
+      // FIXED: Use bullet pool efficiently
+      fireBullet(x, y, angle, speed, dmg, owner = 'player') {
+        if (this.freeBullets.length === 0) return null; // No bullets available
+        
+        const b = this.freeBullets.pop();
+        b.alive = true;
+        b.x = x;
+        b.y = y;
+        b.vx = Math.cos(angle) * speed;
+        b.vy = Math.sin(angle) * speed;
+        b.life = 2000;
+        b.birth = performance.now();
+        b.dmg = dmg;
+        b.owner = owner;
+        b.r = owner === 'player' ? 4 : 4;
+        b.angle = angle;           // <-- store angle
+        b.rotation = angle;        // <-- convenience alias (used for drawing)
+        // assign sprite key
+        b.spriteKey = (owner === 'player') ? 'bullet_player' : 'bullet_enemy';
+        return b;
+      },
+
+      // FIXED: More efficient bullet cleanup
+      returnBulletToPool(bullet) {
+        bullet.alive = false;
+        bullet.spriteKey = null;
+        this.freeBullets.push(bullet);
+      },
+
+      spawnParticles(x, y, color, count = 12) {
+        if (!this.showParticles) return;
+        for (let i = 0; i < count; i++) {
+          this.particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 300,
+            vy: (Math.random() - 0.5) * 300,
+            life: 400 + Math.random() * 600,
+            birth: performance.now(),
+            r: 1 + Math.random() * 2,
+            color
+          });
+        }
+      },
+
+      update(dt) {
+        if (this.paused) return;
+        const now = performance.now();
+
+        // Update FPS counter
+        this.updateFPS();
+
+        // Process burst queue for proper timing
+        this.processBurstQueue(now);
+
+        // Player movement input
+        const acc = CONSTANTS.ACCELERATION;
+        let ax = 0, ay = 0;
+        if (this.keys['w'] || this.keys['ArrowUp']) ay -= 1;
+        if (this.keys['s'] || this.keys['ArrowDown']) ay += 1;
+        if (this.keys['a'] || this.keys['ArrowLeft']) ax -= 1;
+        if (this.keys['d'] || this.keys['ArrowRight']) ax += 1;
+        
+        const len = Math.hypot(ax, ay) || 1;
+        this.player.vx += (ax / len) * acc * dt;
+        this.player.vy += (ay / len) * acc * dt;
+
+        // Friction / clamp
+        this.player.vx *= CONSTANTS.FRICTION;
+        this.player.vy *= CONSTANTS.FRICTION;
+        const maxSpeed = this.player.speed;
+        const vmag = Math.hypot(this.player.vx, this.player.vy);
+        if (vmag > maxSpeed) {
+          this.player.vx = (this.player.vx / vmag) * maxSpeed;
+          this.player.vy = (this.player.vy / vmag) * maxSpeed;
+        }
+
+        this.player.x += this.player.vx * dt;
+        this.player.y += this.player.vy * dt;
+
+        // Keep inside
+        this.player.x = Math.max(this.player.r, Math.min(this.cw - this.player.r, this.player.x));
+        this.player.y = Math.max(this.player.r, Math.min(this.ch - this.player.r, this.player.y));
+
+        // Shooting logic
+        this.handleShooting(now);
+
+        // Update bullets
+        this.updateBullets(dt);
+
+        // Update enemies
+        this.updateEnemies(dt, now);
+
+        // Update particles
+        this.updateParticles(dt, now);
+
+        // Spawn new enemies
+        this.spawnEnemiesIfNeeded();
+
+        // Increase difficulty
+        if (this.score > this.wave * 400) {
+          this.wave++;
+        }
+
+        // Death check
+        if (this.player.hp <= 0) {
+          this.paused = true;
+          setTimeout(() => alert('You died! Score: ' + this.score), 100);
+        }
+      },
+
+      // FIXED: FPS calculation
+      updateFPS() {
+        this.fpsCounter++;
+        const now = performance.now();
+        if (now - this.fpsLastTime >= 1000) {
+          this.fps = this.fpsCounter;
+          this.fpsCounter = 0;
+          this.fpsLastTime = now;
+        }
+      },
+
+      // FIXED: Proper burst weapon implementation
+      processBurstQueue(now) {
+        for (let i = this.burstQueue.length - 1; i >= 0; i--) {
+          const burst = this.burstQueue[i];
+          if (now >= burst.nextShotTime && burst.remaining > 0) {
+            const spread = (Math.random() - 0.5) * burst.spread * Math.PI / 180;
+            this.shootAngle(burst.angle + spread);
+            burst.remaining--;
+            burst.nextShotTime = now + CONSTANTS.BURST_DELAY;
+            
+            if (burst.remaining <= 0) {
+              this.burstQueue.splice(i, 1);
+            }
           }
-        },
+        }
+      },
 
-        spawnEnemy(type = 'chaser') {
-          const edge = Math.floor(Math.random() * 4);
-          let x = 0, y = 0;
-          if (edge === 0) { x = -30; y = Math.random() * this.ch }
-          if (edge === 1) { x = this.cw + 30; y = Math.random() * this.ch }
-          if (edge === 2) { x = Math.random() * this.cw; y = -30 }
-          if (edge === 3) { x = Math.random() * this.cw; y = this.ch + 30 }
+      handleShooting(now) {
+        const weapon = this.weapon;
+        if (this.mouse.down) {
+          if (weapon.mode === 'semi' || weapon.mode === 'auto') {
+            if (now - this.lastShotAt > weapon.fireRate) {
+              this.shootOne();
+              this.lastShotAt = now;
+            }
+          } else if (weapon.mode === 'burst') {
+            if (now - this.lastShotAt > weapon.fireRate) {
+              // FIXED: Proper burst implementation
+              this.burstQueue.push({
+                angle: this.getAimAngle(),
+                spread: weapon.spread,
+                remaining: weapon.burst || 3,
+                nextShotTime: now
+              });
+              this.lastShotAt = now;
+            }
+          }
+        }
+      },
 
-          const baseHp = { chaser: 20, brute: 40, runner: 12, shooter: 18 }[type] || 18;
-          const speed = { chaser: 65, brute: 35, runner: 150, shooter: 80 }[type] || 80;
-
-          const difficultyMod = this.difficulty === 'hard' ? 1.2 : this.difficulty === 'easy' ? 0.85 : 1;
+      updateBullets(dt) {
+        this.bulletsAlive = 0;
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+          const b = this.bullets[i];
+          if (!b.alive) continue;
           
-          const enemy = {
-            id: Math.random().toString(36).slice(2),
-            x, y, r: 12 + Math.random() * 10, vx: 0, vy: 0,
-            type, 
-            hp: baseHp * (1 + this.wave * 0.12 * difficultyMod),
-            maxHp: baseHp, 
-            speed: speed * (1 + this.wave * 0.03), 
-            shootCooldown: 0
-          };
-          this.enemies.push(enemy);
-          this.enemiesSpawned++;
-        },
-
-        // FIXED: Use bullet pool efficiently
-        fireBullet(x, y, angle, speed, dmg, owner = 'player') {
-          if (this.freeBullets.length === 0) return null; // No bullets available
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.life -= dt * 1000;
           
-          const b = this.freeBullets.pop();
-          b.alive = true;
-          b.x = x;
-          b.y = y;
-          b.vx = Math.cos(angle) * speed;
-          b.vy = Math.sin(angle) * speed;
-          b.life = 2000;
-          b.birth = performance.now();
-          b.dmg = dmg;
-          b.owner = owner;
-          b.r = owner === 'player' ? 4 : 6;
-          return b;
-        },
-
-        // FIXED: More efficient bullet cleanup
-        returnBulletToPool(bullet) {
-          bullet.alive = false;
-          this.freeBullets.push(bullet);
-        },
-
-        spawnParticles(x, y, color, count = 12) {
-          if (!this.showParticles) return;
-          for (let i = 0; i < count; i++) {
-            this.particles.push({
-              x, y,
-              vx: (Math.random() - 0.5) * 300,
-              vy: (Math.random() - 0.5) * 300,
-              life: 400 + Math.random() * 600,
-              birth: performance.now(),
-              r: 1 + Math.random() * 2,
-              color
-            });
+          if (b.life <= 0 || b.x < -40 || b.y < -40 || b.x > this.cw + 40 || b.y > this.ch + 40) {
+            this.returnBulletToPool(b);
+            continue;
           }
-        },
+          this.bulletsAlive++;
+        }
+      },
 
-        update(dt) {
-          if (this.paused) return;
-          const now = performance.now();
+      updateEnemies(dt, now) {
+        // FIXED: Process enemies backwards to avoid index issues when removing
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const e = this.enemies[i];
+          const dx = this.player.x - e.x;
+          const dy = this.player.y - e.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const nx = dx / dist, ny = dy / dist;
 
-          // Update FPS counter
-          this.updateFPS();
-
-          // Process burst queue for proper timing
-          this.processBurstQueue(now);
-
-          // Player movement input
-          const acc = CONSTANTS.ACCELERATION;
-          let ax = 0, ay = 0;
-          if (this.keys['w'] || this.keys['ArrowUp']) ay -= 1;
-          if (this.keys['s'] || this.keys['ArrowDown']) ay += 1;
-          if (this.keys['a'] || this.keys['ArrowLeft']) ax -= 1;
-          if (this.keys['d'] || this.keys['ArrowRight']) ax += 1;
-          
-          const len = Math.hypot(ax, ay) || 1;
-          this.player.vx += (ax / len) * acc * dt;
-          this.player.vy += (ay / len) * acc * dt;
-
-          // Friction / clamp
-          this.player.vx *= CONSTANTS.FRICTION;
-          this.player.vy *= CONSTANTS.FRICTION;
-          const maxSpeed = this.player.speed;
-          const vmag = Math.hypot(this.player.vx, this.player.vy);
-          if (vmag > maxSpeed) {
-            this.player.vx = (this.player.vx / vmag) * maxSpeed;
-            this.player.vy = (this.player.vy / vmag) * maxSpeed;
-          }
-
-          this.player.x += this.player.vx * dt;
-          this.player.y += this.player.vy * dt;
-
-          // Keep inside
-          this.player.x = Math.max(this.player.r, Math.min(this.cw - this.player.r, this.player.x));
-          this.player.y = Math.max(this.player.r, Math.min(this.ch - this.player.r, this.player.y));
-
-          // Shooting logic
-          this.handleShooting(now);
-
-          // Update bullets
-          this.updateBullets(dt);
-
-          // Update enemies
-          this.updateEnemies(dt, now);
-
-          // Update particles
-          this.updateParticles(dt, now);
-
-          // Spawn new enemies
-          this.spawnEnemiesIfNeeded();
-
-          // Increase difficulty
-          if (this.score > this.wave * 400) {
-            this.wave++;
-          }
-
-          // Death check
-          if (this.player.hp <= 0) {
-            this.paused = true;
-            setTimeout(() => alert('You died! Score: ' + this.score), 100);
-          }
-        },
-
-        // FIXED: FPS calculation
-        updateFPS() {
-          this.fpsCounter++;
-          const now = performance.now();
-          if (now - this.fpsLastTime >= 1000) {
-            this.fps = this.fpsCounter;
-            this.fpsCounter = 0;
-            this.fpsLastTime = now;
-          }
-        },
-
-        // FIXED: Proper burst weapon implementation
-        processBurstQueue(now) {
-          for (let i = this.burstQueue.length - 1; i >= 0; i--) {
-            const burst = this.burstQueue[i];
-            if (now >= burst.nextShotTime && burst.remaining > 0) {
-              const spread = (Math.random() - 0.5) * burst.spread * Math.PI / 180;
-              this.shootAngle(burst.angle + spread);
-              burst.remaining--;
-              burst.nextShotTime = now + CONSTANTS.BURST_DELAY;
+          // FIXED: Improved AI behaviors
+          if (e.type === 'runner') {
+            // Runner tries to flank with more intelligent movement
+            const tangentX = -ny;
+            const tangentY = nx;
+            e.vx = (nx * 0.7 + tangentX * 0.3) * e.speed;
+            e.vy = (ny * 0.7 + tangentY * 0.3) * e.speed;
+          } else if (e.type === 'shooter') {
+            // FIXED: Shooter leads target slightly
+            e.shootCooldown -= dt * 1000;
+            if (e.shootCooldown <= 0) {
+              const leadTime = dist / 320; // Bullet speed
+              const futureX = this.player.x + this.player.vx * leadTime;
+              const futureY = this.player.y + this.player.vy * leadTime;
+              const ang = Math.atan2(futureY - e.y, futureX - e.x);
               
-              if (burst.remaining <= 0) {
-                this.burstQueue.splice(i, 1);
-              }
+              this.fireBullet(e.x, e.y, ang, 320, 8, 'enemy');
+              e.shootCooldown = 1200 + Math.random() * 600;
             }
-          }
-        },
-
-        handleShooting(now) {
-          const weapon = this.weapon;
-          if (this.mouse.down) {
-            if (weapon.mode === 'semi' || weapon.mode === 'auto') {
-              if (now - this.lastShotAt > weapon.fireRate) {
-                this.shootOne();
-                this.lastShotAt = now;
-              }
-            } else if (weapon.mode === 'burst') {
-              if (now - this.lastShotAt > weapon.fireRate) {
-                // FIXED: Proper burst implementation
-                this.burstQueue.push({
-                  angle: this.getAimAngle(),
-                  spread: weapon.spread,
-                  remaining: weapon.burst || 3,
-                  nextShotTime: now
-                });
-                this.lastShotAt = now;
-              }
-            }
-          }
-        },
-
-        updateBullets(dt) {
-          this.bulletsAlive = 0;
-          for (let i = this.bullets.length - 1; i >= 0; i--) {
-            const b = this.bullets[i];
-            if (!b.alive) continue;
-            
-            b.x += b.vx * dt;
-            b.y += b.vy * dt;
-            b.life -= dt * 1000;
-            
-            if (b.life <= 0 || b.x < -40 || b.y < -40 || b.x > this.cw + 40 || b.y > this.ch + 40) {
-              this.returnBulletToPool(b);
-              continue;
-            }
-            this.bulletsAlive++;
-          }
-        },
-
-        updateEnemies(dt, now) {
-          // FIXED: Process enemies backwards to avoid index issues when removing
-          for (let i = this.enemies.length - 1; i >= 0; i--) {
-            const e = this.enemies[i];
-            const dx = this.player.x - e.x;
-            const dy = this.player.y - e.y;
-            const dist = Math.hypot(dx, dy) || 1;
-            const nx = dx / dist, ny = dy / dist;
-
-            // FIXED: Improved AI behaviors
-            if (e.type === 'runner') {
-              // Runner tries to flank with more intelligent movement
-              const tangentX = -ny;
-              const tangentY = nx;
-              e.vx = (nx * 0.7 + tangentX * 0.3) * e.speed;
-              e.vy = (ny * 0.7 + tangentY * 0.3) * e.speed;
-            } else if (e.type === 'shooter') {
-              // FIXED: Shooter leads target slightly
-              e.shootCooldown -= dt * 1000;
-              if (e.shootCooldown <= 0) {
-                const leadTime = dist / 320; // Bullet speed
-                const futureX = this.player.x + this.player.vx * leadTime;
-                const futureY = this.player.y + this.player.vy * leadTime;
-                const ang = Math.atan2(futureY - e.y, futureX - e.x);
-                
-                this.fireBullet(e.x, e.y, ang, 320, 8, 'enemy');
-                e.shootCooldown = 1200 + Math.random() * 600;
-              }
-              // Shooter moves slower while aiming
-              e.vx = nx * e.speed * 0.5;
-              e.vy = ny * e.speed * 0.5;
-            } else {
-              // Basic chaser movement
-              e.vx = nx * e.speed;
-              e.vy = ny * e.speed;
-            }
-
-            e.x += e.vx * dt;
-            e.y += e.vy * dt;
-
-            // Collision with player
-            if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < e.r + this.player.r) {
-              this.player.hp -= CONSTANTS.PLAYER_CONTACT_DAMAGE;
-              this.spawnParticles(e.x, e.y, '#ff6b6b', 8);
-              e.hp = 0; // Mark for removal
-            }
-
-            // Bullet hits
-            let enemyHit = false;
-            for (const b of this.bullets) {
-              if (!b.alive || b.owner === 'enemy') continue;
-              if (Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r) {
-                e.hp -= b.dmg;
-                this.returnBulletToPool(b);
-                this.spawnParticles(b.x, b.y, '#ffd166', 6);
-                if (e.hp <= 0) {
-                  enemyHit = true;
-                  break;
-                }
-              }
-            }
-
-            // FIXED: Remove enemy properly
-            if (e.hp <= 0) {
-              this.enemies.splice(i, 1);
-              this.score += Math.floor(10 + e.maxHp * 1.5);
-              this.spawnParticles(e.x, e.y, '#60a5fa', 18);
-            }
-          }
-
-          // Enemy bullets hitting player
-          for (const b of this.bullets) {
-            if (!b.alive || b.owner !== 'enemy') continue;
-            if (Math.hypot(b.x - this.player.x, b.y - this.player.y) < b.r + this.player.r) {
-              this.returnBulletToPool(b);
-              this.player.hp -= CONSTANTS.ENEMY_BULLET_DAMAGE;
-              this.spawnParticles(b.x, b.y, '#ff6b6b', 10);
-            }
-          }
-        },
-
-        // FIXED: More efficient particle management
-        updateParticles(dt, now) {
-          for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
-            p.vx *= 0.98;
-            p.vy *= 0.98;
-            p.life -= dt * 1000;
-            
-            if (p.life <= 0 || p.x < -50 || p.y < -50 || p.x > this.cw + 50 || p.y > this.ch + 50) {
-              this.particles.splice(i, 1);
-            }
-          }
-        },
-
-        spawnEnemiesIfNeeded() {
-          if (this.enemies.length < 1 + Math.floor(this.wave * 2 * this.spawnMultiplier)) {
-            const types = ['chaser', 'runner', 'shooter', 'brute'];
-            const t = types[Math.floor(Math.random() * types.length)];
-            this.spawnEnemy(t);
-          }
-        },
-
-        shootOne() {
-          const angle = this.getAimAngle();
-          const w = this.weapon;
-          if (w.name === 'Shotgun') {
-            for (let i = 0; i < (w.pellets || 7); i++) {
-              const spread = (Math.random() - 0.5) * w.spread * Math.PI / 180;
-              this.shootAngle(angle + spread);
-            }
+            // Shooter moves slower while aiming
+            e.vx = nx * e.speed * 0.5;
+            e.vy = ny * e.speed * 0.5;
           } else {
-            this.shootAngle(angle + (Math.random() - 0.5) * (w.spread || 0) * Math.PI / 180);
-          }
-          
-          // Muzzle particle & recoil
-          this.spawnParticles(this.player.x + Math.cos(angle) * 20, this.player.y + Math.sin(angle) * 20, '#ffd166', 6);
-          // Small recoil
-          this.player.vx -= Math.cos(angle) * CONSTANTS.PLAYER_RECOIL;
-          this.player.vy -= Math.sin(angle) * CONSTANTS.PLAYER_RECOIL;
-        },
-
-        shootAngle(angle) {
-          const w = this.weapon;
-          this.fireBullet(this.player.x + Math.cos(angle) * 20, this.player.y + Math.sin(angle) * 20, angle, w.bulletSpeed, w.dmg, 'player');
-        },
-
-        getAimAngle() {
-          return Math.atan2(this.mouse.y - this.player.y, this.mouse.x - this.player.x);
-        },
-
-        gameLoop(now) {
-          const dt = Math.min(0.05, (now - this.lastTick) / 1000);
-          this.lastTick = now;
-
-          if (!this.paused) {
-            this.update(dt);
+            // Basic chaser movement
+            e.vx = nx * e.speed;
+            e.vy = ny * e.speed;
           }
 
-          this.draw();
-          requestAnimationFrame(this.gameLoop.bind(this));
-        },
-
-        draw() {
-          const ctx = this.ctx;
-          ctx.clearRect(0, 0, this.cw, this.ch);
-
-          // Background grid (subtle)
-          ctx.save();
-          ctx.strokeStyle = 'rgba(255,255,255,0.02)';
-          ctx.lineWidth = 1;
-          for (let x = 0; x < this.cw; x += 64) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, this.ch);
-            ctx.stroke();
+          e.x += e.vx * dt;
+          e.y += e.vy * dt;
+          // determine target angle: prefer movement vector, fallback to angle-to-player
+          let target;
+          if (Math.abs(e.vx) > 0.0001 || Math.abs(e.vy) > 0.0001) {
+            target = Math.atan2(e.vy, e.vx);
+          } else {
+            target = Math.atan2(this.player.y - e.y, this.player.x - e.x);
           }
-          for (let y = 0; y < this.ch; y += 64) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(this.cw, y);
-            ctx.stroke();
-          }
-          ctx.restore();
 
-          // Draw particles
-          for (const p of this.particles) {
-            ctx.globalAlpha = Math.max(0, Math.min(1, p.life / CONSTANTS.PARTICLE_LIFETIME));
-            ctx.fillStyle = p.color || '#fff';
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.globalAlpha = 1;
+          // smooth rotation: move e.rotation towards target via shortest arc
+          const diff = ((target - e.rotation + Math.PI) % (2 * Math.PI)) - Math.PI;
+          e.rotation += diff * 0.15; // 0.15 smoothing factor (0..1) — tweak for snappier/slower
 
-          // Draw bullets
-          ctx.lineWidth = 1;
+
+          // Collision with player
+          if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < e.r + this.player.r) {
+            this.player.hp -= CONSTANTS.PLAYER_CONTACT_DAMAGE;
+            this.spawnParticles(e.x, e.y, '#ff6b6b', 8);
+            e.hp = 0; // Mark for removal
+          }
+
+          // Bullet hits
+          let enemyHit = false;
           for (const b of this.bullets) {
-            if (!b.alive) continue;
+            if (!b.alive || b.owner === 'enemy') continue;
+            if (Math.hypot(b.x - e.x, b.y - e.y) < b.r + e.r) {
+              e.hp -= b.dmg;
+              this.returnBulletToPool(b);
+              this.spawnParticles(b.x, b.y, '#ffd166', 6);
+              if (e.hp <= 0) {
+                enemyHit = true;
+                break;
+              }
+            }
+          }
+
+          // FIXED: Remove enemy properly
+          if (e.hp <= 0) {
+            this.enemies.splice(i, 1);
+            this.score += Math.floor(10 + e.maxHp * 1.5);
+            this.spawnParticles(e.x, e.y, '#60a5fa', 18);
+          }
+        }
+
+        // Enemy bullets hitting player
+        for (const b of this.bullets) {
+          if (!b.alive || b.owner !== 'enemy') continue;
+          if (Math.hypot(b.x - this.player.x, b.y - this.player.y) < b.r + this.player.r) {
+            this.returnBulletToPool(b);
+            this.player.hp -= CONSTANTS.ENEMY_BULLET_DAMAGE;
+            this.spawnParticles(b.x, b.y, '#ff6b6b', 10);
+          }
+        }
+      },
+
+      // FIXED: More efficient particle management
+      updateParticles(dt, now) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= 0.98;
+          p.vy *= 0.98;
+          p.life -= dt * 1000;
+          
+          if (p.life <= 0 || p.x < -50 || p.y < -50 || p.x > this.cw + 50 || p.y > this.ch + 50) {
+            this.particles.splice(i, 1);
+          }
+        }
+      },
+
+      spawnEnemiesIfNeeded() {
+        if (this.enemies.length < 1 + Math.floor(this.wave * 2 * this.spawnMultiplier)) {
+          const types = ['chaser', 'runner', 'shooter', 'brute'];
+          const t = types[Math.floor(Math.random() * types.length)];
+          this.spawnEnemy(t);
+        }
+      },
+
+      shootOne() {
+        const angle = this.getAimAngle();
+        const w = this.weapon;
+        if (w.name === 'Shotgun') {
+          for (let i = 0; i < (w.pellets || 7); i++) {
+            const spread = (Math.random() - 0.5) * w.spread * Math.PI / 180;
+            this.shootAngle(angle + spread);
+          }
+        } else {
+          this.shootAngle(angle + (Math.random() - 0.5) * (w.spread || 0) * Math.PI / 180);
+        }
+        
+        // Muzzle particle & recoil
+        this.spawnParticles(this.player.x + Math.cos(angle) * 20, this.player.y + Math.sin(angle) * 20, '#ffd166', 6);
+        // Small recoil
+        this.player.vx -= Math.cos(angle) * CONSTANTS.PLAYER_RECOIL;
+        this.player.vy -= Math.sin(angle) * CONSTANTS.PLAYER_RECOIL;
+      },
+
+      shootAngle(angle) {
+        const w = this.weapon;
+        this.fireBullet(this.player.x + Math.cos(angle) * 20, this.player.y + Math.sin(angle) * 20, angle, w.bulletSpeed, w.dmg, 'player');
+      },
+
+      getAimAngle() {
+        return Math.atan2(this.mouse.y - this.player.y, this.mouse.x - this.player.x);
+      },
+
+      gameLoop(now) {
+        const dt = Math.min(0.05, (now - this.lastTick) / 1000);
+        this.lastTick = now;
+
+        if (!this.paused) {
+          this.update(dt);
+        }
+
+        this.draw();
+        requestAnimationFrame(this.gameLoop.bind(this));
+      },
+
+      draw() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.cw, this.ch);
+
+        // Background grid (subtle)
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < this.cw; x += 64) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, this.ch);
+          ctx.stroke();
+        }
+        for (let y = 0; y < this.ch; y += 64) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(this.cw, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Draw particles
+        for (const p of this.particles) {
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life / CONSTANTS.PARTICLE_LIFETIME));
+          ctx.fillStyle = p.color || '#fff';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // Draw bullets
+        // Draw bullets (rotated if sprite present)
+        ctx.lineWidth = 1;
+        for (const b of this.bullets) {
+          if (!b.alive) continue;
+
+          const img = b.spriteKey ? this.assets[b.spriteKey] : null;
+          const size = (b.r || 4) * 40; // use r*2 for consistent sizing (adjust multiplier if you want bigger)
+
+          if (img) {
+            // compute rotation: prefer stored rotation, fallback to velocity angle
+            const rot = (typeof b.rotation === 'number') ? b.rotation : Math.atan2(b.vy, b.vx);
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            ctx.rotate(rot + SPRITE_ANGLE_OFFSET); // sprite faces UP, so add offset
+            ctx.drawImage(img, -size/2, -size/2, size, size);
+            ctx.restore();
+          } else {
+            // fallback circle
             ctx.beginPath();
             ctx.fillStyle = b.owner === 'player' ? '#ffd166' : '#ff6b6b';
             ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
             ctx.fill();
           }
+        }
 
-          // Draw enemies
-          for (const e of this.enemies) {
-            // Body
-            ctx.beginPath();
-            ctx.fillStyle = '#fb7185';
-            ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // HP bar
-            ctx.fillStyle = 'rgba(255,255,255,0.08)';
-            ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r * 2, 4);
-            ctx.fillStyle = '#60a5fa';
-            ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.hp / e.maxHp) * e.r * 2, 4);
-          }
+        // Draw enemies
+      for (const e of this.enemies) {
+        ctx.save();
+        ctx.translate(e.x, e.y);
 
-          // Player
-          const ang = this.getAimAngle();
-          // Shadow
+        // e.rotation is an angle where 0 points to the right, but sprite faces UP -> add offset
+        ctx.rotate(e.rotation + SPRITE_ANGLE_OFFSET);
+
+        if (e.spriteKey && this.assets[e.spriteKey]) {
+          const img = this.assets[e.spriteKey];
+          const size = e.r * 4;
+          ctx.drawImage(img, -size/2, -size/2, size, size);
+        } else {
+          // fallback circle body when no sprite
           ctx.beginPath();
-          ctx.fillStyle = 'rgba(0,0,0,0.25)';
-          ctx.ellipse(this.player.x + 6, this.player.y + 10, this.player.r + 6, this.player.r + 3, 0, 0, Math.PI * 2);
+          ctx.fillStyle = '#fb7185';
+          ctx.arc(0, 0, e.r, 0, Math.PI * 2);
           ctx.fill();
+        }
 
+        ctx.restore();
+
+        // HP bar (world-space still uses e.x/e.y)
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r * 2, 4);
+        ctx.fillStyle = '#60a5fa';
+        ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.hp / e.maxHp) * e.r * 2, 4);
+      }
+
+        // Player
+        const ang = this.getAimAngle();
+        // Shadow
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.ellipse(this.player.x + 6, this.player.y + 10, this.player.r + 6, this.player.r + 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (this.assets.player) {
+          const playerImg = this.assets.player;
+          const desiredW = this.player.r * 5;
+          const desiredH = this.player.r * 5;
           ctx.save();
           ctx.translate(this.player.x, this.player.y);
-          ctx.rotate(ang);
+          ctx.rotate(ang + SPRITE_ANGLE_OFFSET);
+          ctx.drawImage(playerImg, -desiredW/2, -desiredH/2, desiredW, desiredH);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.translate(this.player.x, this.player.y);
+          ctx.rotate(ang + SPRITE_ANGLE_OFFSET);
           // Body
           ctx.beginPath();
           ctx.fillStyle = '#60a5fa';
@@ -624,126 +703,163 @@
           ctx.fillStyle = '#0ea5a3';
           ctx.fillRect(8, -5, 18, 10);
           ctx.restore();
-
-          // Crosshair
-          ctx.beginPath();
-          ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-          ctx.lineWidth = 1;
-          ctx.moveTo(this.mouse.x - 8, this.mouse.y);
-          ctx.lineTo(this.mouse.x + 8, this.mouse.y);
-          ctx.moveTo(this.mouse.x, this.mouse.y - 8);
-          ctx.lineTo(this.mouse.x, this.mouse.y + 8);
-          ctx.stroke();
-
-          // HUD overlay in canvas
-          ctx.fillStyle = 'rgba(0,0,0,0.6)';
-          ctx.fillRect(8, this.ch - 36, 300, 28);
-          ctx.fillStyle = '#fff';
-          ctx.font = '14px Inter, Arial';
-          ctx.fillText('HP: ' + Math.max(0, Math.round(this.player.hp)) + '  |  Score: ' + this.score + '  |  FPS: ' + this.fps, 16, this.ch - 16);
-        },
-
-        // FIXED: Proper mouse coordinate calculation
-        getMousePosition(e) {
-          const rect = this.canvasElement.getBoundingClientRect();
-          const scaleX = this.canvasElement.width / rect.width;
-          const scaleY = this.canvasElement.height / rect.height;
-          
-          return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-          };
-        },
-
-        // FIXED: Clean up event listeners
-        cleanup() {
-          this.eventListeners.forEach(({ element, event, handler }) => {
-            element.removeEventListener(event, handler);
-          });
-          this.eventListeners = [];
-        },
-
-        addEventListenerWithCleanup(element, event, handler) {
-          element.addEventListener(event, handler);
-          this.eventListeners.push({ element, event, handler });
         }
+
+        // Crosshair
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        ctx.moveTo(this.mouse.x - 8, this.mouse.y);
+        ctx.lineTo(this.mouse.x + 8, this.mouse.y);
+        ctx.moveTo(this.mouse.x, this.mouse.y - 8);
+        ctx.lineTo(this.mouse.x, this.mouse.y + 8);
+        ctx.stroke();
+
+        // HUD overlay in canvas
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(8, this.ch - 36, 300, 28);
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Inter, Arial';
+        ctx.fillText('HP: ' + Math.max(0, Math.round(this.player.hp)) + '  |  Score: ' + this.score + '  |  FPS: ' + this.fps, 16, this.ch - 16);
       },
 
-      mounted() {
-        const canvas = document.getElementById('gameCanvas');
-        this.canvasElement = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.cw = canvas.width;
-        this.ch = canvas.height;
-        this.lastTick = performance.now();
-        this.fpsLastTime = performance.now();
+      // FIXED: Proper mouse coordinate calculation
+      getMousePosition(e) {
+        const rect = this.canvasElement.getBoundingClientRect();
+        const scaleX = this.canvasElement.width / rect.width;
+        const scaleY = this.canvasElement.height / rect.height;
+        
+        return {
+          x: (e.clientX - rect.left) * scaleX,
+          y: (e.clientY - rect.top) * scaleY
+        };
+      },
 
-        // FIXED: Initialize bullet pool properly
-        this.initBulletPool();
-
-        // FIXED: Add event listeners with proper cleanup
-        this.addEventListenerWithCleanup(canvas, 'mousemove', (e) => {
-          const pos = this.getMousePosition(e);
-          this.mouse.x = pos.x;
-          this.mouse.y = pos.y;
+      // FIXED: Clean up event listeners
+      cleanup() {
+        this.eventListeners.forEach(({ element, event, handler }) => {
+          element.removeEventListener(event, handler);
         });
+        this.eventListeners = [];
+      },
 
-        this.addEventListenerWithCleanup(canvas, 'mousedown', (e) => {
-          if (e.button === 0) {
-            this.mouse.down = true;
-            // For pump/shotgun, allow single shot on down
-            const w = this.weapon;
-            if (w.mode === 'pump') {
-              if (performance.now() - this.lastShotAt > 150) {
-                this.shootOne();
-                this.lastShotAt = performance.now();
-              }
+      addEventListenerWithCleanup(element, event, handler) {
+        element.addEventListener(event, handler);
+        this.eventListeners.push({ element, event, handler });
+      },
+
+      // Asset preloading
+      preloadAssets() {
+        const promises = this.assetList.map(a => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              this.assets[a.key] = img;
+              resolve();
+            };
+            img.onerror = (e) => {
+              console.warn('Failed to load', a.src, e);
+              reject(e);
+            };
+            img.src = a.src;
+          });
+        });
+        // We don't fail catastrophically if one fails; return Promise.allSettled so we can continue.
+        return Promise.allSettled(promises).then(results => {
+          // log failures but proceed
+          results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+              console.warn('Asset failed:', this.assetList[i].src);
+            }
+          });
+          return true;
+        });
+      }
+    },
+
+    mounted() {
+      const canvas = document.getElementById('gameCanvas');
+      this.canvasElement = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.cw = canvas.width;
+      this.ch = canvas.height;
+      this.lastTick = performance.now();
+      this.fpsLastTime = performance.now();
+
+      // FIXED: Initialize bullet pool properly
+      this.initBulletPool();
+
+      // FIXED: Add event listeners with proper cleanup
+      this.addEventListenerWithCleanup(canvas, 'mousemove', (e) => {
+        const pos = this.getMousePosition(e);
+        this.mouse.x = pos.x;
+        this.mouse.y = pos.y;
+      });
+
+      this.addEventListenerWithCleanup(canvas, 'mousedown', (e) => {
+        if (e.button === 0) {
+          this.mouse.down = true;
+          // For pump/shotgun, allow single shot on down
+          const w = this.weapon;
+          if (w.mode === 'pump') {
+            if (performance.now() - this.lastShotAt > 150) {
+              this.shootOne();
+              this.lastShotAt = performance.now();
             }
           }
-        });
-
-        this.addEventListenerWithCleanup(window, 'mouseup', (e) => {
-          if (e.button === 0) this.mouse.down = false;
-        });
-
-        // FIXED: Prevent default on wheel and handle weapon switching properly
-        this.addEventListenerWithCleanup(canvas, 'wheel', (e) => {
-          e.preventDefault();
-          if (e.deltaY > 0) {
-            this.weaponIndex = (this.weaponIndex + 1) % this.weapons.length;
-          } else {
-            this.weaponIndex = (this.weaponIndex - 1 + this.weapons.length) % this.weapons.length;
-          }
-        });
-
-        this.addEventListenerWithCleanup(window, 'keydown', (e) => {
-          this.keys[e.key] = true;
-          if (e.key.toLowerCase() === 'p') this.togglePause();
-        });
-
-        this.addEventListenerWithCleanup(window, 'keyup', (e) => {
-          this.keys[e.key] = false;
-        });
-
-        // Handle mouse leaving canvas - stop firing
-        this.addEventListenerWithCleanup(canvas, 'mouseleave', () => {
-          this.mouse.down = false;
-        });
-
-        // Start game loop
-        requestAnimationFrame(this.gameLoop.bind(this));
-
-        // Initial spawns
-        for (let i = 0; i < 3; i++) {
-          this.spawnEnemy();
         }
-      },
+      });
 
-      // FIXED: Clean up when component is destroyed
-      beforeUnmount() {
-        this.cleanup();
+      this.addEventListenerWithCleanup(window, 'mouseup', (e) => {
+        if (e.button === 0) this.mouse.down = false;
+      });
+
+      // FIXED: Prevent default on wheel and handle weapon switching properly
+      this.addEventListenerWithCleanup(canvas, 'wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY > 0) {
+          this.weaponIndex = (this.weaponIndex + 1) % this.weapons.length;
+        } else {
+          this.weaponIndex = (this.weaponIndex - 1 + this.weapons.length) % this.weapons.length;
+        }
+      });
+
+      this.addEventListenerWithCleanup(window, 'keydown', (e) => {
+        this.keys[e.key] = true;
+        if (e.key.toLowerCase() === 'p') this.togglePause();
+      });
+
+      this.addEventListenerWithCleanup(window, 'keyup', (e) => {
+        this.keys[e.key] = false;
+      });
+
+      // Handle mouse leaving canvas - stop firing
+      this.addEventListenerWithCleanup(canvas, 'mouseleave', () => {
+        this.mouse.down = false;
+      });
+
+      // Preload assets then start the loop (if preload fails, still start)
+      this.preloadAssets()
+        .then(() => {
+          requestAnimationFrame(this.gameLoop.bind(this));
+        })
+        .catch(() => {
+          // shouldn't happen because we use allSettled, but fallback
+          requestAnimationFrame(this.gameLoop.bind(this));
+        });
+
+      // Initial spawns
+      for (let i = 0; i < 3; i++) {
+        this.spawnEnemy();
       }
-    }).mount('#app');
-  </script>
+    },
+
+    // FIXED: Clean up when component is destroyed
+    beforeUnmount() {
+      this.cleanup();
+    }
+  }).mount('#app');
+</script>
+
 </body>
 </html>
